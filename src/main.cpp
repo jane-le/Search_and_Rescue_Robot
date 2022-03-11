@@ -1,4 +1,4 @@
-// import standard libraries
+ // import standard libraries
 #if ARDUINO >= 100
 #include "Arduino.h"
 #else
@@ -50,12 +50,23 @@ robot_orientation current_orientation;
 std::pair<double, double> robot_position;
 const double WIDTH = 1828.8; // 6 feet in mm (dimension of the course)
 const double TILE_WIDTH = 300; 
+int encoderL_tick = 0;
+int encoderR_tick = 0;
+int left_motor_power = 0;
+int right_motor_power = 0;
 Adafruit_TCS34725 color_sensor = Adafruit_TCS34725(TCS34725_INTEGRATIONTIME_700MS, TCS34725_GAIN_1X);
 const int SAND_MOTOR_VALUE = 255; 
 const int GRAVEL_MOTOR_VALUE = 255; 
 const int PIT_MOTOR_VALUE = 255; 
 const int TILE_MOTOR_VALUE = 255; 
-const int TURN_MOTOR_VALUE = 255; 
+const int TURN_MOTOR_VALUE_LEFT = 255; 
+const int TURN_MOTOR_VALUE_RIGHT = 50; // either stop (speed 0) or 50 in the reverse direction 
+const int ROBOT_WIDTH = 200; 
+const int ROBOT_LENGTH = 200;
+const int ROBOT_MOTOR_OFFSET = 5;
+const int TRAP_EXIT_TIME = 20000;
+const double CENTER_TILE_TOL = 10;
+const int TURN_DELAY = 20000;
 
 
 // S = start, E = end, T = turn 
@@ -162,14 +173,61 @@ void updateCurrentTile(const std::pair<double, double>& position, const int next
     double position_y = position.second;
 
     if (position_x <= next_center_x + TILE_WIDTH/2.0 && position_x > next_center_x - TILE_WIDTH/2.0 
-        && position_y <= next_center_y + TILE_WIDTH/2.0 && position_y > next_center_y - TILE_WIDTH/2.0) {
+        && position_y <= next_center_y + TILE_WIDTH/2.0 && position_y > next_center_y - TILE_WIDTH/2.0) { // this may need tolerances 
             current_tile = next_tile; 
     } 
     /* else {
+        // talk to AZUM
         // left adjust or right adjust
         double error_x = position_x - next_center_x;
         double error_y = position_y - next_center_y;
     } */
+}
+
+void driveStraight() { 
+    left_power = TILE_MOTOR_VALUE;
+    right_power = TILE_MOTOR_VALUE;    
+
+    left_count = encoderL.getTicks(LEFT);
+    right_count = encoderR.getTicks(RIGHT);
+
+    long left_diff = left_count - encoderL_tick;
+    long right_diff = right_count - encoderR_tick;
+    // adjust left & right motor powers to keep counts similar (drive straight)
+    // if left rotated more than right, slow down left & speed up right
+    if (left_diff > right_diff) {
+        left_power -= OFFSET;
+        right_power += OFFSET;
+    } else if (left_diff < right_diff) {
+        left_power += OFFSET;
+        right_power -= OFFSET;
+    }
+    left_motor.motorSetSpeed(left_power);
+    right_motor.motorSetSpeed(right_power);
+}
+// EXIT STATES: TRAPS & TILE_FORWARD
+void exitTraps(robot_state_t currentState) {
+    // check for trap
+    // if (color_sensor > map(currentState).second || color_sensor < map(currentState).first))  // if color outside of range
+        // if color_sensor == black
+            // use delay before switching state
+            // delay(TRAP_EXIT_TIME);
+            // setState(SAND_FORWARD);
+            // break;
+        // else if color_sensor >= x && color_sensor <= y
+            // delay(TRAP_EXIT_TIME);
+            // setState(GRAVEL_FORWARD);
+            // break;
+        // else if color_sensor == yellow
+            // check if robot is level
+            // delay(TRAP_EXIT_TIME);
+            // setState(TILE_FORWARD);
+            // break;
+        // else
+            // invalid color, assume it is gravel
+            // delay(TRAP_EXIT_TIME);
+            // setState(GRAVEL_FORWARD)
+            // break;
 }
 
 // INIT state, robot waits for push button to be pressed before moving
@@ -179,12 +237,13 @@ void handleInit() {
 }
 
 void handleTileForward() {
-    motorControl(true, true, true); // motor 1 forward
-    motorControl(true, true, false); // motor 2 forward
-    analogWrite(enA, TILE_MOTOR_VALUE);
-	analogWrite(enB, TILE_MOTOR_VALUE);
-    
-    
+    left_motor.motorForward();
+    right_motor.motorForward();
+
+    left_motor.motorSetSpeed(TILE_MOTOR_VALUE);
+    right_motor.motorSetSpeed(TILE_MOTOR_VALUE);
+
+    // worry about drive straight later
     uint16_t r, g, b, c, colorTemp, lux;
 
     color_sensor.getRawData(&r, &g, &b, &c);
@@ -207,13 +266,20 @@ void handleTileForward() {
         // break;
     
     // check for turn or stop 
+    // only change state when robot is center of tile 
     std::map<std::pair<int, int>, char>::iterator it = course.find(path[current_tile]); 
     if(it != course.end()) {
-        char value = it->second;
+        char landmark = it->second;
         
-        if(value == 'T') {
+        if(landmark == 'T') {
+            // only change state when robot is center of tile
+            // double center_x =  std::get<0>(coords[path[current_tile][0]][path[current_tile][1]]);
+            // double center_y =  std::get<1>(coords[path[current_tile][0]][path[current_tile][1]]);
+            // if (robot_position.first > center_x - CENTER_TILE_TOL && robot_position.first < center_x + CENTER_TILE_TOL)
+            delay(TURN_DELAY); // if doesnt work use front tof -- do math
             setState(TURN_RIGHT);
-        } else if (value == 'E') {
+        } else if (landmark == 'E') {
+            delay(TURN_DELAY);
             setState(STOP); 
         }
     }
@@ -221,49 +287,55 @@ void handleTileForward() {
 
 void handleSandForward() {
     // EXIT STATES: TRAPS & TILE_FORWARD
-    motorControl(true, true, true);
-    motorControl(true, true, false);
-    analogWrite(IO.ENA, SAND_MOTOR_VALUE);
-	analogWrite(IO.ENB, SAND_MOTOR_VALUE);
+    left_motor.motorSetSpeed(SAND_MOTOR_VALUE);
+    right_motor.motorSetSpeed(SAND_MOTOR_VALUE);
+    exitTraps(SAND_FORWARD);
+    // set left power right power variables 
 }
 
 void handleGravelForward() {
     // EXIT STATES: TRAPS & TILE_FORWARD
-    motorControl(true, true, true);
-    motorControl(true, true, false);
-    analogWrite(IO.ENA, GRAVEL_MOTOR_VALUE);
-	analogWrite(IO.ENB, GRAVEL_MOTOR_VALUE);
+    left_motor.motorSetSpeed(GRAVEL_MOTOR_VALUE);
+    right_motor.motorSetSpeed(GRAVEL_MOTOR_VALUE);
+    exitTraps(GRAVEL_FORWARD);
+    // set left power right power variables 
 }
 void handlePitForward() {
+    // may need to accelerate when going up
     // EXIT STATES: TRAPS & TILE_FORWARD
-    motorControl(true, true, true);
-    motorControl(true, true, false);
-    analogWrite(IO.ENA, PIT_MOTOR_VALUE);
-	analogWrite(IO.ENB, PIT_MOTOR_VALUE);
-    
+    left_motor.motorSetSpeed(PIT_MOTOR_VALUE);
+    right_motor.motorSetSpeed(PIT_MOTOR_VALUE);
+    exitTraps(PIT_FORWARD);
+    // set left power right power variables
 }
 
 void handleTurnRight() {
-
     //EXIT STATE: TILE FORWARD
+l   left_motor.motorForward();
+    right_motor.motorBackward(); // search how tanks turn
+    while(imu.getYaw() < 90) {
+        left_motor.motorSetSpeed(TURN_MOTOR_VALUE_LEFT);
+        right_motor.motorSetSpeed(TURN_MOTOR_VALUE_RIGHT);
+    }
+    // set left power right power variables 
 
-    // assumes motorA is left, motorB is right
-    // motorA forward
-    digitalWrite(IO.IN1, HIGH);
-    digitalWrite(IO.IN2, LOW);
+    // may need to 0 imu or store yaw imu value
     
-    //motorB forward  
-    digitalWrite(IO.IN3, LOW);
-    digitalWrite(IO.IN4, HIGH);
-
-    analogWrite(IO.ENA, TURN_MOTOR_VALUE);
-	analogWrite(IO.ENB, TURN_MOTOR_VALUE);
-
-    // while(angle < 90 degrees) {}
-
-    // turn motors off 
-    motorControl(false, true, true);
-    motorControl(false, true, false);
+    // update direction of robot 
+    switch(current_orientation) {
+        case(LEFT):
+            current_orientation = TOP;
+            break;
+        case(TOP):
+            current_orientation = RIGHT;
+            break;
+        case(RIGHT):
+            current_orientation = BOTTOM;
+            break;
+        case(BOTTOM):
+            current_orientation = LEFT;
+            break;
+    }
 
     setState(TILE_FORWARD);
 }
@@ -272,8 +344,9 @@ void handleLeftAdjust() {}
 void handleRightAdjust() {}
 
 void handleStop() {
-    motorControl(false, true, true);
-    motorControl(false, true, false);
+    left_motor.motorStop();
+    right_motor.motorStop();
+// set speed to 0 , // set left power right power variables 
     setState(INIT); 
 }
 
@@ -297,6 +370,10 @@ void loop() {
         // update current tile to next tile if position is in the bounds, update robot path 
         updateCurrentTile(robot_position, next_tile, current_tile); 
     }
+
+    // get and update prev motor ticks value 
+    encoderL_tick = getTicks(left); // update this later with sensor apis 
+    encoderR_tick = getTicks(right); // update this later with sensor apis 
     
     switch(robot_state) {
         case INIT:
