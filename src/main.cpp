@@ -1,4 +1,4 @@
- // import standard libraries
+// import standard libraries
 #if ARDUINO >= 100
 #include "Arduino.h"
 #else
@@ -10,6 +10,13 @@
 #include <utility>
 #include <vector>
 #include <tuple>
+
+#define LMotorForwardPin
+#define LMotorStopPin
+#define LMotorPWMPin
+#define RMotorForwardPin
+#define RMotorStopPin
+#define RMotorPWMPin
 
 typedef enum {
   INIT,
@@ -67,6 +74,7 @@ const int ROBOT_MOTOR_OFFSET = 5;
 const int TRAP_EXIT_TIME = 20000;
 const double CENTER_TILE_TOL = 10;
 const int TURN_DELAY = 20000;
+LeftTofSensor left_tof = new LeftTofSensor();
 
 
 // S = start, E = end, T = turn 
@@ -97,42 +105,6 @@ std::vector<std::pair<double, double>> path = {
 
 
 /* ------------ Functions --------------- */
-void drive(float speed, float multiplier = 1.0) {
-  speed *= multiplier;
-  motor_setSpeed(motor_left, speed);
-  motor_setSpeed(motor_right, speed);
-}
-
-void motorControl(bool turn_on, bool forward, bool motor1) {
-    if (turn_on && forward) {
-        // motor forward
-        if (motor1) {
-            digitalWrite(IO.IN1, HIGH);
-            digitalWrite(IO.IN2, LOW);    
-        } else {
-            digitalWrite(IO.IN3, HIGH);
-            digitalWrite(IO.IN4, LOW);
-        }
-    } else if (turn_on && !forward) {
-        // motor reverse
-        if (motor1) {
-            digitalWrite(IO.IN1, LOW);
-            digitalWrite(IO.IN2, HIGH);    
-        } else {
-            digitalWrite(IO.IN3, LOW);
-            digitalWrite(IO.IN4, HIGH);
-        }
-    } else {
-        // motor stop
-        if (motor1) {
-            digitalWrite(IO.IN1, LOW);
-            digitalWrite(IO.IN2, LOW);    
-        } else {
-            digitalWrite(IO.IN3, LOW);
-            digitalWrite(IO.IN4, LOW);
-        }
-    }
-}
 
 void setState(robot_state_t new_state) {
   robot_state = new_state;
@@ -145,22 +117,22 @@ void calculatePosition(robot_orientation current_orientation, std::pair<double, 
 
   switch(current_orientation) {
     case LEFT:
-        position.first = left_tof;
+        position.first = left_tof.getValue();
         position.second = which_tof == 'B' ? WIDTH - front_tof : front_tof;
         break;
         
     case RIGHT:
-        position.first = WIDTH - left_tof; 
+        position.first = WIDTH - left_tof.getValue(); 
         position.second = which_tof == 'B' ? back_tof : WIDTH - front_tof;
         break;
         
     case TOP:
-        position.second = left_tof;
+        position.second = left_tof.getValue();
         position.first = which_tof == 'B' ? back_tof : WIDTH - front_tof;
         break; 
 
     case BOTTOM:
-        position.second = WIDTH - left_tof;
+        position.second = WIDTH - left_tof.getValue();
         position.first = which_tof == 'B' ? WIDTH - back_tof : front_tof; 
         break;
   }
@@ -237,6 +209,8 @@ void handleInit() {
 }
 
 void handleTileForward() {
+    left_tof.addValue(); 
+
     left_motor.motorForward();
     right_motor.motorForward();
 
@@ -278,11 +252,20 @@ void handleTileForward() {
             // if (robot_position.first > center_x - CENTER_TILE_TOL && robot_position.first < center_x + CENTER_TILE_TOL)
             delay(TURN_DELAY); // if doesnt work use front tof -- do math
             setState(TURN_RIGHT);
-        } else if (landmark == 'E') {
+     
+
+    if(left_tof.shouldAdjustLeft()) {
+        setState(LEFT_ADJUST);
+    }
+
+    if(left_tof.shouldAdjustRight()) {
+        setState(RIGHT_ADJUST);
+    }   } else if (landmark == 'E') {
             delay(TURN_DELAY);
             setState(STOP); 
         }
     }
+
 }
 
 void handleSandForward() {
@@ -311,7 +294,7 @@ void handlePitForward() {
 
 void handleTurnRight() {
     //EXIT STATE: TILE FORWARD
-l   left_motor.motorForward();
+    left_motor.motorForward();
     right_motor.motorBackward(); // search how tanks turn
     while(imu.getYaw() < 90) {
         left_motor.motorSetSpeed(TURN_MOTOR_VALUE_LEFT);
@@ -337,6 +320,17 @@ l   left_motor.motorForward();
             break;
     }
 
+    // zero imu heading
+    // adjust position with a set value
+
+    setState(TILE_FORWARD);
+
+
+    // zero imu heading
+    // adjust position with a set value
+    setState(TILE_FORWARD);
+
+    left_tof.clearValues();
     setState(TILE_FORWARD);
 }
 
@@ -370,7 +364,7 @@ void loop() {
         // update current tile to next tile if position is in the bounds, update robot path 
         updateCurrentTile(robot_position, next_tile, current_tile); 
     }
-
+    
     // get and update prev motor ticks value 
     encoderL_tick = getTicks(left); // update this later with sensor apis 
     encoderR_tick = getTicks(right); // update this later with sensor apis 
