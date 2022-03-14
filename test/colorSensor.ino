@@ -26,18 +26,15 @@ void setup(void) {
         Serial.println("No TCS34725 found ... check your connections");
         while (1);
     }
-    pinMode(buttonPin, INPUT);
     // Now we're ready to get readings!
 }
 
 void loop(void) {
     uint16_t r, g, b, c, colorTemp, lux;
-    uint32_t rTotal, gTotal, bTotal, cTotal;
+    uint32_t rTotal = 0, gTotal = 0, bTotal = 0, cTotal = 0;
 
-    // wait for button press
-    while (digitalRead(buttonPin) == HIGH) {}
     Serial.print("Measuring new reading... ");
-
+    Serial.println(" ");
 
     // take numReadings readings and average the RGB values
     for (int i = 0; i < numReadings; i ++)
@@ -60,7 +57,8 @@ void loop(void) {
     Serial.print("C: "); Serial.print(cTotal / numReadings, DEC); Serial.print(" ");
     Serial.println(" ");
 
-    float fR, fG, fB, fRTotal, fBTotal, fGTotal;
+    float fR, fG, fB; 
+    float fRTotal = 0, fBTotal = 0, fGTotal = 0;
     // take numReadings readings and average the RGB values
     for (int i = 0; i < numReadings; i ++)
     {
@@ -73,5 +71,6 @@ void loop(void) {
     Serial.print("R: "); Serial.print(fRTotal / numReadings, DEC); Serial.print(" ");
     Serial.print("G: "); Serial.print(fGTotal / numReadings, DEC); Serial.print(" ");
     Serial.print("B: "); Serial.print(fBTotal / numReadings, DEC); Serial.print(" ");
+    Serial.println(" ");
     Serial.println(" ");
 }
