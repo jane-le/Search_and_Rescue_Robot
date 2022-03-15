@@ -60,9 +60,6 @@ class IMU {
     float pitch;
     float roll;
 
-};
-
-
 
 // functions for TOF sensor
 class TOF {
