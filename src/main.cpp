@@ -61,10 +61,12 @@ int encoderL_tick = 0;
 int encoderR_tick = 0;
 int left_motor_power = 0;
 int right_motor_power = 0;
+double prev_pitch = 0;
 Adafruit_TCS34725 color_sensor = Adafruit_TCS34725(TCS34725_INTEGRATIONTIME_700MS, TCS34725_GAIN_1X);
 const int SAND_MOTOR_VALUE = 255; 
 const int GRAVEL_MOTOR_VALUE = 255; 
-const int PIT_MOTOR_VALUE = 255; 
+const int PIT_MOTOR_LOW = 40; 
+const int PIT_MOTOR_HIGH = 255;
 const int TILE_MOTOR_VALUE = 255; 
 const int TURN_MOTOR_VALUE_LEFT = 255; 
 const int TURN_MOTOR_VALUE_RIGHT = 50; // either stop (speed 0) or 50 in the reverse direction 
@@ -74,7 +76,14 @@ const int ROBOT_MOTOR_OFFSET = 5;
 const int TRAP_EXIT_TIME = 20000;
 const double CENTER_TILE_TOL = 10;
 const int TURN_DELAY = 20000;
+const int PIT_DELAY_LOW = 30000;
+const int PIT_DELAY_MED = 50000;
+const int PIT_DELAY_HIGH = 30000;
+const double PITCH_UPWARDS_VALUE = 40; 
+const double PITCH_DOWNWARDS_VALUE = -40; 
+const double ADJUST_VALUE = 40;
 LeftTofSensor left_tof = new LeftTofSensor();
+ColorSensor color_sensor = new ColorSensor();
 
 
 // S = start, E = end, T = turn 
@@ -157,8 +166,8 @@ void updateCurrentTile(const std::pair<double, double>& position, const int next
 }
 
 void driveStraight() { 
-    left_power = TILE_MOTOR_VALUE;
-    right_power = TILE_MOTOR_VALUE;    
+    left_motor_power = TILE_MOTOR_VALUE;
+    right_motor_power = TILE_MOTOR_VALUE;    
 
     left_count = encoderL.getTicks(LEFT);
     right_count = encoderR.getTicks(RIGHT);
@@ -168,38 +177,14 @@ void driveStraight() {
     // adjust left & right motor powers to keep counts similar (drive straight)
     // if left rotated more than right, slow down left & speed up right
     if (left_diff > right_diff) {
-        left_power -= OFFSET;
-        right_power += OFFSET;
+        left_motor_power -= OFFSET;
+        right_motor_power += OFFSET;
     } else if (left_diff < right_diff) {
-        left_power += OFFSET;
-        right_power -= OFFSET;
+        left_motor_power += OFFSET;
+        right_motor_power -= OFFSET;
     }
-    left_motor.motorSetSpeed(left_power);
-    right_motor.motorSetSpeed(right_power);
-}
-// EXIT STATES: TRAPS & TILE_FORWARD
-void exitTraps(robot_state_t currentState) {
-    // check for trap
-    // if (color_sensor > map(currentState).second || color_sensor < map(currentState).first))  // if color outside of range
-        // if color_sensor == black
-            // use delay before switching state
-            // delay(TRAP_EXIT_TIME);
-            // setState(SAND_FORWARD);
-            // break;
-        // else if color_sensor >= x && color_sensor <= y
-            // delay(TRAP_EXIT_TIME);
-            // setState(GRAVEL_FORWARD);
-            // break;
-        // else if color_sensor == yellow
-            // check if robot is level
-            // delay(TRAP_EXIT_TIME);
-            // setState(TILE_FORWARD);
-            // break;
-        // else
-            // invalid color, assume it is gravel
-            // delay(TRAP_EXIT_TIME);
-            // setState(GRAVEL_FORWARD)
-            // break;
+    left_motor.forward(left_motor_power);
+    right_motor.forward(right_motor_power);
 }
 
 // INIT state, robot waits for push button to be pressed before moving
@@ -211,33 +196,22 @@ void handleInit() {
 void handleTileForward() {
     left_tof.addValue(); 
 
-    left_motor.motorForward();
-    right_motor.motorForward();
+    driveStraight();
 
-    left_motor.motorSetSpeed(TILE_MOTOR_VALUE);
-    right_motor.motorSetSpeed(TILE_MOTOR_VALUE);
-
-    // worry about drive straight later
-    uint16_t r, g, b, c, colorTemp, lux;
-
-    color_sensor.getRawData(&r, &g, &b, &c);
-    // colorTemp = color_sensor.calculateColorTemperature(r, g, b);
-    colorTemp = color_sensor.calculateColorTemperature_dn40(r, g, b, c);
-    lux = color_sensor.calculateLux(r, g, b);
     // check for trap
-    // if color_sensor == black
-        // setState(SAND_FORWARD);
-        // break;
-    // else if color_sensor >= x && color_sensor <= y
-        // setState(GRAVEL_FORWARD);
-        // break;
-    // else if color_sensor == yellow
-        // setState(TILE_FORWARD);
-        // break;
-    // else
-        // invalid color, assume it is gravel
-        // setState(GRAVEL_FORWARD)
-        // break;
+    if (color_sensor.checkSand()) {
+        setState(SAND_FORWARD);
+        break;
+    } else if (color_sensor.checkTile()) {
+        setState(TILE_FORWARD);
+        break;
+    } else if ((imu.getPitch() - prev_pitch) < PITCH_DOWNWARDS_VALUE) {
+        setState(PIT_FORWARD);
+        break;
+    } else {
+        setState(GRAVEL_FORWARD);
+        break;
+    }
     
     // check for turn or stop 
     // only change state when robot is center of tile 
@@ -265,42 +239,92 @@ void handleTileForward() {
             setState(STOP); 
         }
     }
-
 }
 
 void handleSandForward() {
     // EXIT STATES: TRAPS & TILE_FORWARD
-    left_motor.motorSetSpeed(SAND_MOTOR_VALUE);
-    right_motor.motorSetSpeed(SAND_MOTOR_VALUE);
+    left_motor.forward(SAND_MOTOR_VALUE);
+    right_motor.forward(SAND_MOTOR_VALUE);
     exitTraps(SAND_FORWARD);
     // set left power right power variables 
+    left_motor_power = SAND_MOTOR_VALUE; 
+    right_motor_power = SAND_MOTOR_VALUE;
+
+    if(color_sensor.isSand()) return; 
+
+    // imu check 
+    if(imu.getPitch() - prev_pitch < PITCH_DOWNWARDS_VALUE) {
+        setState(PIT_FORWARD);
+    }
+
+    if(color_sensor.isTile()) {
+        // add a delay? or something to check if robot fully overcame trap
+        setState(TILE_FORWARD); 
+    } else {
+        // add a delay? or something to check if robot fully overcame trap
+        setState(GRAVEL_FORWARD);
+    }
+
 }
 
 void handleGravelForward() {
-    // EXIT STATES: TRAPS & TILE_FORWARD
-    left_motor.motorSetSpeed(GRAVEL_MOTOR_VALUE);
-    right_motor.motorSetSpeed(GRAVEL_MOTOR_VALUE);
-    exitTraps(GRAVEL_FORWARD);
-    // set left power right power variables 
+    left_motor_power = GRAVEL_MOTOR_VALUE;
+    right_motor_power = GRAVEL_MOTOR_VALUE;
+    left_motor.forward(left_motor_power);
+    right_motor.forward(right_motor_power);
+
+    // 7. in gravel, exit to sand
+    // 8. in gravel, exit to pit
+    // 9. in gravel, exit to tile
+    
+    if (color_sensor.checkSand()) {
+        setState(SAND_FORWARD);
+    } else if (color_sensor.checkTile()) {
+        setState(TILE_FORWARD);
+    } else if ((imu.getPitch() - prev_pitch) < PITCH_DOWNWARDS_VALUE) {
+        setState(PIT_FORWARD);
+    }
 }
+
 void handlePitForward() {
-    // may need to accelerate when going up
-    // EXIT STATES: TRAPS & TILE_FORWARD
-    left_motor.motorSetSpeed(PIT_MOTOR_VALUE);
-    right_motor.motorSetSpeed(PIT_MOTOR_VALUE);
-    exitTraps(PIT_FORWARD);
-    // set left power right power variables
+    left_motor_power = PIT_MOTOR_LOW;
+    right_motor_power = PIT_MOTOR_LOW;
+    left_motor.forward(left_motor_power);
+    right_motor.forward(right_motor_power); 
+    delay(PIT_DELAY_LOW);
+    
+    left_motor_power = PIT_MOTOR_MED;
+    right_motor_power = PIT_MOTOR_MED;
+    left_motor.forward(left_motor_power);
+    right_motor.forward(right_motor_power); 
+    delay(PIT_DELAY_MED);
+
+    left_motor_power = PIT_MOTOR_HIGH;
+    right_motor_power = PIT_MOTOR_HIGH;
+    left_motor.forward(left_motor_power);
+    right_motor.forward(right_motor_power); 
+    delay(PIT_DELAY_HIGH);
+
+    // exit pit state
+    setState(TILE_FORWARD);
+        /*
+        if(color_sensor.checkTile()) {
+            setState(TILE_FORWARD);
+        } else if (color_sensor.checkSand()) {
+            setState(SAND_FORWARD);
+        } else {
+            setState(GRAVEL_FORWARD);
+        } */
 }
 
 void handleTurnRight() {
     //EXIT STATE: TILE FORWARD
-    left_motor.motorForward();
-    right_motor.motorBackward(); // search how tanks turn
     while(imu.getYaw() < 90) {
-        left_motor.motorSetSpeed(TURN_MOTOR_VALUE_LEFT);
-        right_motor.motorSetSpeed(TURN_MOTOR_VALUE_RIGHT);
+        left_motor_power = TURN_MOTOR_VALUE_LEFT;
+        right_motor_power = TURN_MOTOR_VALUE_RIGHT;
+        left_motor.forward(left_motor_power);
+        right_motor.backward(right_motor_power);
     }
-    // set left power right power variables 
 
     // may need to 0 imu or store yaw imu value
     
@@ -325,22 +349,27 @@ void handleTurnRight() {
 
     setState(TILE_FORWARD);
 
+    left_tof.clearValues();
+}
 
-    // zero imu heading
-    // adjust position with a set value
+void handleLeftAdjust() {
+    right_motor_power += ADJUST_VALUE;
+    right_motor.forward(right_motor_power);
+    delay(1000);
     setState(TILE_FORWARD);
 
-    left_tof.clearValues();
+}
+
+void handleRightAdjust() {
+    left_motor_power += ADJUST_VALUE;
+    left_motor.forward(left_motor_power);
+    delay(1000);
     setState(TILE_FORWARD);
 }
 
-void handleLeftAdjust() {}
-void handleRightAdjust() {}
-
 void handleStop() {
-    left_motor.motorStop();
-    right_motor.motorStop();
-// set speed to 0 , // set left power right power variables 
+    left_motor.stop();
+    right_motor.stop();
     setState(INIT); 
 }
 
@@ -368,6 +397,8 @@ void loop() {
     // get and update prev motor ticks value 
     encoderL_tick = getTicks(left); // update this later with sensor apis 
     encoderR_tick = getTicks(right); // update this later with sensor apis 
+
+    prev_pitch = imu.getPitch();
     
     switch(robot_state) {
         case INIT:
