@@ -1,10 +1,3 @@
-#include <Adafruit_LIS3MDL.h>
-Adafruit_LIS3MDL lis3mdl;
-
-// Can change this to be LSM6DS33 or whatever ya like
-#include <Adafruit_LSM6DS33.h>
-Adafruit_LSM6DS33 lsm6ds;
-
 #include <Adafruit_ICM20X.h>
 #include <Adafruit_ICM20948.h>
 Adafruit_ICM20948 icm;

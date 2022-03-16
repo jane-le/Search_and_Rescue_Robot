@@ -2,8 +2,12 @@
 #define SENSORS_H
 
 #include "Arduino.h"
-// #include "Adafruit_TCS34725.h"
+#include "Adafruit_TCS34725.h"
 #include "Adafruit_VL53L0X.h"
+#include <Adafruit_Sensor_Calibration.h>
+#include <Adafruit_AHRS.h>
+#include <Adafruit_ICM20X.h>
+#include <Adafruit_ICM20948.h>
 
 // functions for motors
 
@@ -47,18 +51,27 @@ class Encoder {
 class IMU {
   public:
     IMU();
-    void calibrate();
+    void calibrate(float* mag_hardiron, float* mag_softiron, float mag_field, int num_points);
     void update();
-    float getYaw();
+    float getHeading();
     float getPitch();
     float getRoll();
-
-    bool getYPR(float* y, float* p, float* r);
+    void getQuaternion(float* qw, float* qx, float* qy, float* qz);
+    void getYPR(float* y, float* p, float* r);
 
   private:
-    float yaw;
+    float heading;
     float pitch;
     float roll;
+
+    float _qx, _qy, _qz, _qw;
+
+    Adafruit_ICM20948 icm;
+    Adafruit_Mahony filter;
+    Adafruit_Sensor_Calibration_EEPROM cal;
+    Adafruit_Sensor *accelerometer, *gyroscope, *magnetometer;
+};
+
 
 
 // functions for TOF sensor
@@ -72,7 +85,17 @@ class TOF {
     Adafruit_VL53L0X lox;
     uint32_t buffer[10];
     uint16_t distance;
-}
+};
+
+// functions for colour sensor
+class ColorSensor {
+  public:
+    ColorSensor();
+    bool checkSand();
+    bool checkTile();
+  private:
+    Adafruit_TCS34725 tcs;
+};
 
 
 #endif
