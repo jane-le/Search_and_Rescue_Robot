@@ -7,9 +7,9 @@ double TOLERANCE = 10;
 
 class LeftTofSensor {
     public: 
-        double value; 
-        TOF tofSensor;
-        std::queue<double> buffer;
+        double value_; 
+        TOF tof_sensor_;
+        std::queue<double> buffer_;
 
         LeftTofSensor(TOF tofSensor);
 
@@ -23,4 +23,4 @@ class LeftTofSensor {
 
         bool shouldAdjustLeft();
 }
-#endif
+#endif // HELPERS_H

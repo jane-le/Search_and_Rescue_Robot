@@ -311,13 +311,13 @@ ColorSensor::ColorSensor()
 }
 
 // function prototype
-bool ColorSensor::checkSand()
+bool ColorSensor::isSand()
 {
     return false;
 }
 
 // function prototype
-bool ColorSensor::checkTile()
+bool ColorSensor::isTile()
 {
     return false;
 }

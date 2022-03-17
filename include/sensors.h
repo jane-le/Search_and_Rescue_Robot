@@ -91,8 +91,8 @@ class TOF {
 class ColorSensor {
   public:
     ColorSensor();
-    bool checkSand();
-    bool checkTile();
+    bool isSand();
+    bool isTile();
   private:
     Adafruit_TCS34725 tcs;
 };
