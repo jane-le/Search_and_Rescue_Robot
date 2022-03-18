@@ -5,21 +5,41 @@
 #define MAX_PWM 255
 #define DEBOUNCE_DELAY 50  // 50 ms (may need to change)
 
-
 // uncomment this for debugging
 //#define DEBUG_ON
 
 // uncomment this for calibration
 //#define CALIBRATE_IMU
 
+#define SAND_R_MIN 100
+#define SAND_R_MAX 120
+#define SAND_G_MIN 100
+#define SAND_G_MAX 120
+#define SAND_B_MIN 100
+#define SAND_B_MAX 120
+
+#define TILE_R_MIN 200
+#define TILE_R_MAX 220
+#define TILE_G_MIN 200
+#define TILE_G_MAX 220
+#define TILE_B_MIN 200
+#define TILE_B_MAX 220
+
 Motor::Motor(uint16_t speed_pin, uint16_t forward_pin, uint16_t backward_pin)
 {
     speedPin = speed_pin;
     forwardPin = forward_pin;
     backwardPin = backward_pin;
+}
+
+void Motor::init()
+{
     pinMode(speedPin, OUTPUT);
     pinMode(forwardPin, OUTPUT);
     pinMode(backwardPin, OUTPUT);
+#ifdef DEBUG_ON
+    Serial.println(F("Initialized Motor"));
+#endif
 }
 
 void Motor::forward(uint16_t pwm_signal = 100)
@@ -51,9 +71,16 @@ Encoder::Encoder(uint16_t clock_pin, uint16_t dt_pin)
     dtPin = dt_pin;
     lastDebounceTime = 0;
     encoderPosCount = 0;
+}
+
+void Encoder::init()
+{
     pinMode(clockPin, INPUT);
     pinMode(dtPin, INPUT);
     lastValue = digitalRead(clockPin);
+#ifdef DEBUG_ON
+    Serial.println(F("Initialized Encoder"));
+#endif
 }
 
 void Encoder::update()
@@ -83,34 +110,79 @@ unsigned long Encoder::getTicks()
     return encoderPosCount;
 }
 
+TOF::TOF(uint16_t lox_address, uint16_t shutdown_pin)
+{
+    loxAddress = lox_address;
+    shutdownPin = shutdown_pin;
+}
+void TOF::init()
+{
+    if (!lox.begin(loxAddress)) {
+        Serial.println(F("Failed to boot VL53L0X"));
+        while (1);
+    }
+#ifdef DEBUG_ON
+    Serial.println(F("Found VL53L0X"));
+#endif
+}
 
- TOF::TOF()
- {
-     if (!lox.begin())
-     {
-         Serial.println(F("Failed to boot VL53L0X"));
-         while (1);
-     }
- }
-
- void TOF::update()
- {
+int TOF::getDistance()
+{
      // read sensor value
+    VL53L0X_RangingMeasurementData_t rangingMeasurementData;
+    lox.getSingleRangingMeasurement(&rangingMeasurementData);
+    // make sure reading is valid and less than 1m
+    if (rangingMeasurementData.RangeStatus != 4 && rangingMeasurementData.RangeMilliMeter < 1000) {
+        return rangingMeasurementData.RangeMilliMeter;
+    }
+    return -1;
      // append to buffer
      // average values using buffer
      // update current reading based on filter
-    //VL53L0X_RangingMeasurementData_t measure;
-    //lox.rangingTest(&measure, false);
-    distance = 1;
- }
+}
 
- uint16_t TOF::getDistance()
- {
-     return distance;
- }
+void setupTOF(TOF leftTOF) {
+    pinMode(leftTOF.shutdownPin, OUTPUT);    
+    // pinMode(frontTOF.shutdownPin, OUTPUT);
+    // pinMode(backTOF.shutdownPin, OUTPUT);
+    delay(10);
+    // all reset
+    digitalWrite(leftTOF.shutdownPin, LOW);    
+    // digitalWrite(frontTOF.shutdownPin, LOW);
+    // digitalWrite(backTOF.shutdownPin, LOW);
+    delay(10);
 
- IMU::IMU()
- {
+    // all unreset
+    digitalWrite(leftTOF.shutdownPin, HIGH);    
+    // digitalWrite(frontTOF.shutdownPin, HIGH);
+    // digitalWrite(backTOF.shutdownPin, HIGH);
+    delay(10);
+
+    // activating leftTOF and resetting other two
+    digitalWrite(leftTOF.shutdownPin, HIGH);
+    // digitalWrite(frontTOF.shutdownPin, LOW);
+    // digitalWrite(backTOF.shutdownPin, LOW);
+
+    leftTOF.init();
+    delay(10);
+
+    // activating frontTOF
+    // digitalWrite(frontTOF.shutdownPin, HIGH);
+    // delay(10);
+
+    // frontTOF.init();
+    // delay(10);
+
+    // // activate backTOF
+    // digitalWrite(backTOF.shutdownPin, HIGH);
+    // delay(10);
+
+    // backTOF.init();
+    // delay(10);
+}
+
+void IMU::init()
+{
     if (!icm.begin_I2C()) {
         Serial.println("Failed to find sensors");
         while (1) delay(10);
@@ -136,17 +208,11 @@ unsigned long Encoder::getTicks()
     } else {
         Serial.println("Loaded existing calibration");
     }
- }
+}
 
- void IMU::calibrate(float* mag_hardiron, float* mag_softiron, float mag_field, int num_points = 100)
- {
+void IMU::calibrate(float* mag_hardiron, float* mag_softiron, float mag_field, int num_points = 100)
+{
 #ifdef CALIBRATE_IMU
-    #include <Adafruit_Sensor_Calibration.h>
-
-    Adafruit_Sensor *accelerometer, *gyroscope, *magnetometer;
-
-    #include "IMU_20948.h"
-
     sensors_event_t mag_event, gyro_event, accel_event;
     
     while (!Serial) delay(10);     // will pause Zero, Leonardo, etc until serial console opens
@@ -298,26 +364,56 @@ void IMU::getYPR(float *y, float *p, float *r)
     *r = roll;
 }
 
-
 ColorSensor::ColorSensor()
+{
+    enabled = true;
+}
+
+void ColorSensor::init()
 {
     tcs = Adafruit_TCS34725(TCS34725_INTEGRATIONTIME_614MS, TCS34725_GAIN_1X);
     if (tcs.begin()) {
-        Serial.println("Found sensor");
+        Serial.println("Found color sensor");
     } else {
         Serial.println("No TCS34725 found ... check your connections");
         while (1);
     }
 }
 
-// function prototype
+void ColorSensor::disable()
+{
+    if (enabled)
+        tcs.disable();
+    enabled = false;
+}
+
+void ColorSensor::enable()
+{
+    if (!enabled)
+        tcs.enable();
+    enabled = true;
+}
+
 bool ColorSensor::isSand()
 {
+    float r, g, b;
+    tcs.getRGB(&r, &g, &b);
+
+    if (r > SAND_R_MIN && r < SAND_R_MAX && g > SAND_G_MIN && g < SAND_G_MAX && b < SAND_B_MIN && b > SAND_B_MAX)
+    {
+        return true;
+    }
     return false;
 }
 
-// function prototype
 bool ColorSensor::isTile()
 {
+    float r, g, b;
+    tcs.getRGB(&r, &g, &b);
+
+    if (r > TILE_R_MIN && r < TILE_R_MAX && g > TILE_G_MIN && g < TILE_G_MAX && b < TILE_B_MIN && b > TILE_B_MAX)
+    {
+        return true;
+    }
     return false;
 }

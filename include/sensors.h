@@ -14,6 +14,7 @@
 class Motor {
   public:
     Motor(uint16_t speed_pin, uint16_t forward_pin, uint16_t backward_pin);
+    void init();
     void forward(uint16_t pwm_signal);
     void backward(uint16_t pwm_signal);
     void stop();
@@ -30,6 +31,7 @@ class Motor {
 class Encoder {
   public:
     Encoder(uint16_t clock_pin, uint16_t dt_pin);
+    void init();
 
     // this functions should get called on every loop to update the encoder values
     void update();
@@ -50,9 +52,14 @@ class Encoder {
 // functions for imu sensor
 class IMU {
   public:
-    IMU();
+    IMU() {}
+    void init();
+    // need to define CALIBRATE_IMU to use this function
     void calibrate(float* mag_hardiron, float* mag_softiron, float mag_field, int num_points);
+
+    // this function should get called on every loop to update the IMU measurement
     void update();
+
     float getHeading();
     float getPitch();
     float getRoll();
@@ -77,25 +84,32 @@ class IMU {
 // functions for TOF sensor
 class TOF {
   public:
-    TOF();
-    void update();
-    uint16_t getDistance();
+    TOF(uint16_t lox_address, uint16_t shutdown_pin);
+    void init();
+    int getDistance();
+    uint16_t shutdownPin;
     
   private:
     Adafruit_VL53L0X lox;
     uint32_t buffer[10];
-    uint16_t distance;
+    int distance;
+    uint16_t loxAddress;
 };
 
 // functions for colour sensor
 class ColorSensor {
   public:
     ColorSensor();
+    void init();
+    void enable();
+    void disable();
     bool isSand();
     bool isTile();
   private:
     Adafruit_TCS34725 tcs;
+    bool enabled;
 };
 
+void setupTOF(TOF leftTOF);
 
 #endif
