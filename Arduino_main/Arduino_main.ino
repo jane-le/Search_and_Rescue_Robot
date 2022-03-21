@@ -9,7 +9,6 @@
 #include <ArduinoSTL.h>
 #include <HashMap.h>
 #include <sensors.h>
-#include <helpers.h>
 #include <microTuple.h>
 #include <map>
 
@@ -61,8 +60,9 @@ int right_motor_power = 0;
 double prev_pitch = 0;
 const int SAND_MOTOR_VALUE = 60;
 const int PIT_MOTOR_LOW = 40;
-const int PIT_MOTOR_MED = 2;
-const int PIT_MOTOR_HIGH = 3;
+const int PIT_MOTOR_MED = 50;
+const int PIT_MOTOR_HIGH = 60;
+const int PIT_INCREMENT = 2; 
 const int TILE_MOTOR_VALUE = 60;
 const int TURN_MOTOR_VALUE_LEFT = 40;
 const int TURN_MOTOR_VALUE_RIGHT = 40; // either stop (speed 0) or 50 in the reverse direction
@@ -81,11 +81,13 @@ const double ADJUST_VALUE = 1;
 Motor left_motor(L_MOTOR_PWM, L_MOTOR_PIN1, L_MOTOR_PIN2);
 Motor right_motor(R_MOTOR_PWM, R_MOTOR_PIN1, R_MOTOR_PIN2);
 
-LeftTofSensor left_tof(LOX1_ADDRESS, SHT_LOX1);
+TOF left_tof_actual(LOX1_ADDRESS, SHT_LOX1);
 TOF front_tof(LOX2_ADDRESS, SHT_LOX2);
 TOF back_tof(LOX3_ADDRESS, SHT_LOX3);
 
 IMU imu;
+
+LeftTOF left_tof(LOX1_ADDRESS, SHT_LOX1); 
 
 
 int heading_offset = 0; 
@@ -223,21 +225,24 @@ void handlePitForward() {
   }
 
   if(imu.getPitch() > pitch_offset - 5 && imu.getPitch() < pitch_offset + 5) {
-    left_motor_power += PIT_MOTOR_MED;
-    right_motor_power += PIT_MOTOR_MED;
+    left_motor_power = left_motor_power >= PIT_MOTOR_MED ? left_motor_power : left_motor_power + PIT_INCREMENT;
+    right_motor_power = right_motor_power >= PIT_MOTOR_MED ? right_motor_power : right_motor_power + PIT_INCREMENT;
     left_motor.forward(left_motor_power);
     right_motor.forward(right_motor_power);
   }
 
   if((imu.getPitch() + pitch_offset) > pitch_offset + 5) {
-    left_motor_power += PIT_MOTOR_HIGH;
-    right_motor_power += PIT_MOTOR_HIGH;
+    
+    left_motor_power = left_motor_power >= PIT_MOTOR_HIGH ? left_motor_power : left_motor_power + PIT_INCREMENT;
+    right_motor_power = right_motor_power >=  PIT_MOTOR_HIGH ? right_motor_power : right_motor_power + PIT_INCREMENT;
+    
     left_motor.forward(left_motor_power);
     right_motor.forward(right_motor_power);
       
-      // exit pit state
-
-    while(!(imu.getPitch() > pitch_offset - 5 && imu.getPitch() < pitch_offset + 5)) {}
+    // exit pit state
+    while(!(imu.getPitch() > pitch_offset - 5 && imu.getPitch() < pitch_offset + 5)) {
+      imu.update();   
+    }
       
     setState(TILE_FORWARD);
     
@@ -315,21 +320,25 @@ void setup() {
   }
 
   Serial.println(F("Setting up TOF")); 
+  pinMode(left_tof_actual.shutdownPin, OUTPUT);
   pinMode(front_tof.shutdownPin, OUTPUT);
   pinMode(back_tof.shutdownPin, OUTPUT);
   delay(10);
   
   // all reset   
+  digitalWrite(left_tof_actual.shutdownPin, LOW);
   digitalWrite(front_tof.shutdownPin, LOW);
   digitalWrite(back_tof.shutdownPin, LOW);
   delay(10);
 
   // all unreset   
+  digitalWrite(left_tof_actual.shutdownPin, HIGH);
   digitalWrite(front_tof.shutdownPin, HIGH);
   digitalWrite(back_tof.shutdownPin, HIGH);
   delay(10);
 
   // activating leftTOF and resetting other two
+  digitalWrite(left_tof_actual.shutdownPin, HIGH);
   digitalWrite(front_tof.shutdownPin, LOW);
   digitalWrite(back_tof.shutdownPin, LOW);
   Serial.println(F("Here"));
@@ -354,14 +363,10 @@ void setup() {
   // then initialize imu
   imu.init();
 
-
   pinMode(button_pin, INPUT);
   robot_state = INIT;
   current_orientation = BOTTOM;
   current_tile = 0;
-
-  
-
 }
 
 void loop() {

@@ -8,6 +8,7 @@
 #include <Adafruit_AHRS.h>
 #include <Adafruit_ICM20X.h>
 #include <Adafruit_ICM20948.h>
+#include <queue>
 
 // functions for motors
 
@@ -111,5 +112,25 @@ class ColorSensor {
 };
 
 void setupTOF(TOF leftTOF);
+
+class LeftTOF {
+	public:
+	    LeftTOF(uint16_t lox_address, uint16_t shutdown_pin);
+	    void init();
+	    int getDistance();
+	    uint16_t shutdownPin;
+	    std::queue<uint16_t> buffer_;
+	    void addValue();
+        uint16_t getValue();
+        void clearValues();
+        bool shouldAdjustRight();
+        bool shouldAdjustLeft();
+    
+  	private:
+	    Adafruit_VL53L0X lox;
+	    uint32_t buffer[10];
+	    int distance;
+	    uint16_t loxAddress;
+};
 
 #endif
