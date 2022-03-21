@@ -48,18 +48,6 @@ typedef enum {
   BOTTOM
 } robot_orientation;
 
-// IO
-struct {
-  // Left Motor connections
-  const int ENA = 9;
-  const int IN1 = 8;
-  const int IN2 = 7;
-  // Right Motor connections
-  const int ENB = 3;
-  const int IN3 = 5;
-  const int IN4 = 4;
-} IO;
-
 robot_state_t robot_state;
 int button_state = 0;
 const int button_pin = 2;
@@ -90,19 +78,14 @@ const double ADJUST_VALUE = 1;
 
 
 // Initialize a motor
-Motor leftMotor(L_MOTOR_PWM, L_MOTOR_PIN1, L_MOTOR_PIN2);
-Motor rightMotor(R_MOTOR_PWM, R_MOTOR_PIN1, R_MOTOR_PIN2);
+Motor left_motor(L_MOTOR_PWM, L_MOTOR_PIN1, L_MOTOR_PIN2);
+Motor right_motor(R_MOTOR_PWM, R_MOTOR_PIN1, R_MOTOR_PIN2);
 
-TOF leftTOF(LOX1_ADDRESS, SHT_LOX1);
+LeftTofSensor left_tof(LOX1_ADDRESS, SHT_LOX1);
 TOF front_tof(LOX2_ADDRESS, SHT_LOX2);
 TOF back_tof(LOX3_ADDRESS, SHT_LOX3);
 
-Motor left_motor(LMotorSpeedPin, LMotorForwardPin, LMotorBackwardPin);
-Motor right_motor(RMotorSpeedPin, RMotorForwardPin, RMotorBackwardPin);
 IMU imu;
-
-
-LeftTofSensor left_tof(leftTOF);
 
 
 int heading_offset = 0; 
@@ -267,7 +250,7 @@ void handleTurnRight() {
   left_motor.stop();
   right_motor.stop();
   
-  while (abs(imu.getHeading() - target_heading) <= 90) {
+  while (abs(imu.getHeading() - target_heading) > 5) {
     left_motor_power = TURN_MOTOR_VALUE_LEFT;
     right_motor_power = TURN_MOTOR_VALUE_RIGHT;
     left_motor.forward(left_motor_power);
@@ -331,46 +314,42 @@ void setup() {
     delay(1);
   }
 
-  Serial.println(F("Setting up TOF"));
-  pinMode(leftTOF.shutdownPin, OUTPUT);    
-  pinMode(frontTOF.shutdownPin, OUTPUT);
-  pinMode(backTOF.shutdownPin, OUTPUT);
+  Serial.println(F("Setting up TOF")); 
+  pinMode(front_tof.shutdownPin, OUTPUT);
+  pinMode(back_tof.shutdownPin, OUTPUT);
   delay(10);
   
-  // all reset
-  digitalWrite(leftTOF.shutdownPin, LOW);    
-  digitalWrite(frontTOF.shutdownPin, LOW);
-  digitalWrite(backTOF.shutdownPin, LOW);
+  // all reset   
+  digitalWrite(front_tof.shutdownPin, LOW);
+  digitalWrite(back_tof.shutdownPin, LOW);
   delay(10);
 
-  // all unreset
-  digitalWrite(leftTOF.shutdownPin, HIGH);    
-  digitalWrite(frontTOF.shutdownPin, HIGH);
-  digitalWrite(backTOF.shutdownPin, HIGH);
+  // all unreset   
+  digitalWrite(front_tof.shutdownPin, HIGH);
+  digitalWrite(back_tof.shutdownPin, HIGH);
   delay(10);
 
   // activating leftTOF and resetting other two
-  digitalWrite(leftTOF.shutdownPin, HIGH);
-  digitalWrite(frontTOF.shutdownPin, LOW);
-  digitalWrite(backTOF.shutdownPin, LOW);
+  digitalWrite(front_tof.shutdownPin, LOW);
+  digitalWrite(back_tof.shutdownPin, LOW);
   Serial.println(F("Here"));
-  leftTOF.init();
+
   delay(10);
   Serial.println(F("Set up TOF"));
 
-  digitalWrite(frontTOF.shutdownPin, HIGH);
-  frontTOF.init();
+  digitalWrite(front_tof.shutdownPin, HIGH);
+  front_tof.init();
   Serial.println(F("Set up front TOF"));
 
   delay(10);
   
-  digitalWrite(backTOF.shutdownPin, HIGH);
-  backTOF.init();
+  digitalWrite(back_tof.shutdownPin, HIGH);
+  back_tof.init();
   Serial.println(F("Set up all TOF"));
 
   // setup motors and encoders
-  leftMotor.init();
-  rightMotor.init();
+  left_motor.init();
+  right_motor.init();
   
   // then initialize imu
   imu.init();
@@ -398,6 +377,7 @@ void loop() {
   }
 
   prev_pitch = imu.getPitch();
+  imu.update();
 
   switch (robot_state) {
     case INIT:
