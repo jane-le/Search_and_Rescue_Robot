@@ -72,9 +72,20 @@ class IMU {
     float roll;
 
     float _qx, _qy, _qz, _qw;
+    // Vector to hold integral error for Mahony method
+    float eInt[3];
+    float q[4];
+    unsigned long now, last; //micros() timers for AHRS loop
+    float deltat;  //loop time in seconds
+
+    void calibrateTry(sensors_event_t *accel, sensors_event_t *gyro, sensors_event_t *mag, float Axyz[3], float Gxyz[3], float Mxyz[3]);
+    void MahonyQuaternionUpdate(float ax, float ay, float az, float gx, float gy, float gz, float mx, float my, float mz, float deltat);
 
     Adafruit_ICM20948 icm;
-    Adafruit_Mahony filter;
+
+    //Adafruit_NXPSensorFusion filter; // slowest
+    //Adafruit_Madgwick filter;  // faster than NXP
+    //Adafruit_Mahony filter;  // fastest/smalleset
     Adafruit_Sensor_Calibration_EEPROM cal;
     Adafruit_Sensor *accelerometer, *gyroscope, *magnetometer;
 };
