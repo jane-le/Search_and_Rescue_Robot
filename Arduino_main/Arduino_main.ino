@@ -1,3 +1,5 @@
+
+
 #if ARDUINO >= 100
 #include "Arduino.h"
 #else
@@ -5,18 +7,29 @@
 #endif
 
 #include <ArduinoSTL.h>
+#include <HashMap.h>
 #include <sensors.h>
 #include <helpers.h>
-#include <HashMap.h>
 #include <microTuple.h>
 #include <map>
 
-#define LMotorForwardPin 1
-#define LMotorBackwardPin 2
-#define LMotorSpeedPin 3
-#define RMotorForwardPin 4
-#define RMotorBackwardPin 5
-#define RMotorSpeedPin 6
+// Digital pins connected to TOF sensors
+#define SHT_LOX1 23
+#define SHT_LOX2 25
+#define SHT_LOX3 27
+
+// I2C addressing of TOF sensors
+#define LOX1_ADDRESS 0x30
+#define LOX2_ADDRESS 0x31
+#define LOX3_ADDRESS 0x32
+
+// motor pins
+#define L_MOTOR_PWM 2
+#define L_MOTOR_PIN1 22
+#define L_MOTOR_PIN2 24
+#define R_MOTOR_PWM 3
+#define R_MOTOR_PIN1 26
+#define R_MOTOR_PIN2 28
 
 typedef enum {
   INIT,
@@ -60,29 +73,40 @@ int right_motor_power = 0;
 double prev_pitch = 0;
 const int SAND_MOTOR_VALUE = 60;
 const int PIT_MOTOR_LOW = 40;
-const int PIT_MOTOR_MED = 60;
-const int PIT_MOTOR_HIGH = 70;
+const int PIT_MOTOR_MED = 2;
+const int PIT_MOTOR_HIGH = 3;
 const int TILE_MOTOR_VALUE = 60;
 const int TURN_MOTOR_VALUE_LEFT = 40;
 const int TURN_MOTOR_VALUE_RIGHT = 40; // either stop (speed 0) or 50 in the reverse direction
 const int ROBOT_WIDTH = 80;
 const int ROBOT_LENGTH = 160;
 const int ROBOT_MOTOR_OFFSET = 5;
-const int TRAP_EXIT_TIME = 20000;
+
 const double CENTER_TILE_TOL = 10;
-const int PIT_DELAY_LOW = 30000;
-const int PIT_DELAY_MED = 50000;
-const int PIT_DELAY_HIGH = 30000;
-const double PITCH_UPWARDS_VALUE = 40;
-const double PITCH_DOWNWARDS_VALUE = -40;
-const double ADJUST_VALUE = 5;
-LeftTofSensor left_tof;
-TOF back_tof;
-TOF front_tof;
+
+const double PITCH_UPWARDS_VALUE = 30;
+const double PITCH_DOWNWARDS_VALUE = -30;
+const double ADJUST_VALUE = 1;
+
+
+// Initialize a motor
+Motor leftMotor(L_MOTOR_PWM, L_MOTOR_PIN1, L_MOTOR_PIN2);
+Motor rightMotor(R_MOTOR_PWM, R_MOTOR_PIN1, R_MOTOR_PIN2);
+
+TOF leftTOF(LOX1_ADDRESS, SHT_LOX1);
+TOF front_tof(LOX2_ADDRESS, SHT_LOX2);
+TOF back_tof(LOX3_ADDRESS, SHT_LOX3);
+
 Motor left_motor(LMotorSpeedPin, LMotorForwardPin, LMotorBackwardPin);
 Motor right_motor(RMotorSpeedPin, RMotorForwardPin, RMotorBackwardPin);
 IMU imu;
 
+
+LeftTofSensor left_tof(leftTOF);
+
+
+int heading_offset = 0; 
+int pitch_offset = 0; 
 
 // S = start, E = end, T = turn
 std::map<std::pair<int, int>, char> course = {
@@ -118,10 +142,12 @@ void setState(robot_state_t new_state) {
 }
 
 void calculatePosition(robot_orientation current_orientation, std::pair<double, double>& position) {
-  // obtain TOF data, front_tof, back_tof, left_tof
 
-
-
+  if(abs(imu.getPitch() - pitch_offset) > 5) {
+    return;
+  }
+  
+  
   MicroTuple<int, int, char> coord = coords[path[current_tile].first][path[current_tile].second];
   char which_tof = coord.get<2>();
 
@@ -149,14 +175,18 @@ void calculatePosition(robot_orientation current_orientation, std::pair<double, 
 }
 
 void updateCurrentTile(const std::pair<double, double>& position, const int next_tile, int& current_tile) {
+  if(abs(imu.getPitch() - pitch_offset) > 5) {
+    return;
+  }
+  
   MicroTuple<int, int, char> coord = coords[path[next_tile].first][path[next_tile].second];
   double next_center_x = coord.get<0>();
   double next_center_y = coord.get<1>();
   double position_x = position.first;
   double position_y = position.second;
 
-  if (position_x <= next_center_x + TILE_WIDTH / 2.0 && position_x > next_center_x - TILE_WIDTH / 2.0
-      && position_y <= next_center_y + TILE_WIDTH / 2.0 && position_y > next_center_y - TILE_WIDTH / 2.0) { // this may need tolerances
+  if (position_x <= next_center_x + TILE_WIDTH / 4.0 && position_x > next_center_x - TILE_WIDTH / 4.0
+      && position_y <= next_center_y + TILE_WIDTH / 4.0 && position_y > next_center_y - TILE_WIDTH / 4.0) { // this may need tolerances
     current_tile = next_tile;
   }
 }
@@ -164,15 +194,17 @@ void updateCurrentTile(const std::pair<double, double>& position, const int next
 // INIT state, robot waits for push button to be pressed before moving
 void handleInit() {
   while (digitalRead(button_pin) == LOW) {}
+
+  heading_offset = imu.getHeading(); 
+  pitch_offset = imu.getPitch(); 
+  
   setState(TILE_FORWARD);
 }
 
 void handleTileForward() {
   left_tof.addValue();
-
-  driveStraight();
-
-  if ((imu.getPitch() - prev_pitch) < PITCH_DOWNWARDS_VALUE) {
+  
+  if ((imu.getPitch() - pitch_offset) < PITCH_DOWNWARDS_VALUE) {
     setState(PIT_FORWARD);
   }
 
@@ -183,14 +215,8 @@ void handleTileForward() {
     char landmark = it->second;
 
     if (landmark == 'T') {
-      // only change state when robot is center of tile
-      // double center_x =  std::get<0>(coords[path[current_tile][0]][path[current_tile][1]]);
-      // double center_y =  std::get<1>(coords[path[current_tile][0]][path[current_tile][1]]);
-      // if (robot_position.first > center_x - CENTER_TILE_TOL && robot_position.first < center_x + CENTER_TILE_TOL)
-      delay(TURN_DELAY); // to get to the center of turn tile. if doesnt work use front tof -- do math
       setState(TURN_RIGHT);
     } else if (landmark == 'E') {
-      delay(TURN_DELAY);
       setState(STOP);
     }
   }
@@ -205,23 +231,34 @@ void handleTileForward() {
 }
 
 void handlePitForward() {
-  left_motor_power = PIT_MOTOR_LOW;
-  right_motor_power = PIT_MOTOR_LOW;
-  left_motor.forward(left_motor_power);
-  right_motor.forward(right_motor_power);
 
-  left_motor_power = PIT_MOTOR_MED;
-  right_motor_power = PIT_MOTOR_MED;
-  left_motor.forward(left_motor_power);
-  right_motor.forward(right_motor_power);
+  if((imu.getPitch() + pitch_offset) < pitch_offset - 5) {
+    left_motor_power = PIT_MOTOR_LOW;
+    right_motor_power = PIT_MOTOR_LOW;
+    left_motor.forward(left_motor_power);
+    right_motor.forward(right_motor_power);
+  }
 
-  left_motor_power = PIT_MOTOR_HIGH;
-  right_motor_power = PIT_MOTOR_HIGH;
-  left_motor.forward(left_motor_power);
-  right_motor.forward(right_motor_power);
+  if(imu.getPitch() > pitch_offset - 5 && imu.getPitch() < pitch_offset + 5) {
+    left_motor_power += PIT_MOTOR_MED;
+    right_motor_power += PIT_MOTOR_MED;
+    left_motor.forward(left_motor_power);
+    right_motor.forward(right_motor_power);
+  }
 
-  // exit pit state
-  setState(TILE_FORWARD);
+  if((imu.getPitch() + pitch_offset) > pitch_offset + 5) {
+    left_motor_power += PIT_MOTOR_HIGH;
+    right_motor_power += PIT_MOTOR_HIGH;
+    left_motor.forward(left_motor_power);
+    right_motor.forward(right_motor_power);
+      
+      // exit pit state
+
+    while(!(imu.getPitch() > pitch_offset - 5 && imu.getPitch() < pitch_offset + 5)) {}
+      
+    setState(TILE_FORWARD);
+    
+  }
 }
 
 void handleTurnRight() {
@@ -255,8 +292,28 @@ void handleTurnRight() {
       break;
   }
 
+
+  heading_offset = imu.getHeading(); 
   setState(TILE_FORWARD);
   left_tof.clearValues();
+}
+
+void handleLeftAdjust() {
+    right_motor_power += ADJUST_VALUE;
+    right_motor.forward(right_motor_power);
+
+    if(abs(imu.getHeading() - heading_offset) < 10) {
+      setState(TILE_FORWARD);
+    }
+}
+
+void handleRightAdjust() {
+    left_motor_power += ADJUST_VALUE;
+    left_motor.forward(left_motor_power);
+
+    if(abs(imu.getHeading() - heading_offset) < 10) {
+      setState(TILE_FORWARD);
+    }
 }
 
 void handleStop() {
@@ -266,10 +323,65 @@ void handleStop() {
 }
 
 void setup() {
+  Serial.begin(115200);
+  pinMode(50, INPUT);
+
+  // wait until serial port opens for native USB devices
+  while (!Serial) {
+    delay(1);
+  }
+
+  Serial.println(F("Setting up TOF"));
+  pinMode(leftTOF.shutdownPin, OUTPUT);    
+  pinMode(frontTOF.shutdownPin, OUTPUT);
+  pinMode(backTOF.shutdownPin, OUTPUT);
+  delay(10);
+  
+  // all reset
+  digitalWrite(leftTOF.shutdownPin, LOW);    
+  digitalWrite(frontTOF.shutdownPin, LOW);
+  digitalWrite(backTOF.shutdownPin, LOW);
+  delay(10);
+
+  // all unreset
+  digitalWrite(leftTOF.shutdownPin, HIGH);    
+  digitalWrite(frontTOF.shutdownPin, HIGH);
+  digitalWrite(backTOF.shutdownPin, HIGH);
+  delay(10);
+
+  // activating leftTOF and resetting other two
+  digitalWrite(leftTOF.shutdownPin, HIGH);
+  digitalWrite(frontTOF.shutdownPin, LOW);
+  digitalWrite(backTOF.shutdownPin, LOW);
+  Serial.println(F("Here"));
+  leftTOF.init();
+  delay(10);
+  Serial.println(F("Set up TOF"));
+
+  digitalWrite(frontTOF.shutdownPin, HIGH);
+  frontTOF.init();
+  Serial.println(F("Set up front TOF"));
+
+  delay(10);
+  
+  digitalWrite(backTOF.shutdownPin, HIGH);
+  backTOF.init();
+  Serial.println(F("Set up all TOF"));
+
+  // setup motors and encoders
+  leftMotor.init();
+  rightMotor.init();
+  
+  // then initialize imu
+  imu.init();
+
+
   pinMode(button_pin, INPUT);
   robot_state = INIT;
   current_orientation = BOTTOM;
   current_tile = 0;
+
+  
 
 }
 
