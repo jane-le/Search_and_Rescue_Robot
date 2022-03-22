@@ -536,6 +536,31 @@ void IMU::update()
     // filter.getQuaternion(&_qw, &_qx, &_qy, &_qz);
 }
 
+void IMU::updateIMU()
+{
+    sensors_event_t accel, gyro, mag;
+
+    accelerometer->getEvent(&accel);
+    gyroscope->getEvent(&gyro);
+    magnetometer->getEvent(&mag);
+
+    float Axyz[3], Gxyz[3], Mxyz[3];
+
+    calibrateTry(&accel, &gyro, &mag, Axyz, Gxyz, Mxyz);
+
+    now = micros();
+    deltat = (now - last) * 1.0e-6; //seconds since last update
+    last = now;
+
+    filter.updateIMU(Gxyz[0], Gxyz[1], Gxyz[2], Axyz[0], Axyz[1], Axyz[2], deltat);
+
+    heading = filter.getYaw();
+    pitch = filter.getPitch();
+    roll = filter.getRoll();
+
+    filter.getQuaternion(&q[0], &q[1], &q[2], &q[3]);
+}
+
 float IMU::getPitch()
 {
     return pitch;
@@ -553,10 +578,10 @@ float IMU::getRoll()
 
 void IMU::getQuaternion(float *qw, float *qx, float *qy, float *qz)
 {
-    *qw = q[3];
-    *qx = q[0];
-    *qy = q[1];
-    *qz = q[2];
+    *qw = q[0];
+    *qx = q[1];
+    *qy = q[2];
+    *qz = q[3];
 }
 
 void IMU::getYPR(float *y, float *p, float *r)

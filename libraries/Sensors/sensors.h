@@ -61,6 +61,9 @@ class IMU {
     // this function should get called on every loop to update the IMU measurement
     void update();
 
+    // test function for accel and gyro fusion
+    void updateIMU();
+
     float getHeading();
     float getPitch();
     float getRoll();
@@ -85,7 +88,7 @@ class IMU {
     Adafruit_ICM20948 icm;
 
     //Adafruit_NXPSensorFusion filter; // slowest
-    //Adafruit_Madgwick filter;  // faster than NXP
+    Adafruit_Madgwick filter;  // faster than NXP
     //Adafruit_Mahony filter;  // fastest/smalleset
     Adafruit_Sensor_Calibration_EEPROM cal;
     Adafruit_Sensor *accelerometer, *gyroscope, *magnetometer;
