@@ -47,10 +47,10 @@ typedef enum {
   BOTTOM
 } robot_orientation;
 
-robot_state_t robot_state;
+robot_state_t robot_state = INIT;
 int button_state = 0;
 const int button_pin = 2;
-int current_tile;
+int current_tile = 0;
 robot_orientation current_orientation;
 std::pair<double, double> robot_position;
 const double WIDTH = 1800;
@@ -121,7 +121,9 @@ std::vector<std::pair<int, int>> path = {
 /* ------------ Functions --------------- */
 
 void setState(robot_state_t new_state) {
+  Serial.println("Set State");
   robot_state = new_state;
+  Serial.println(robot_state);
 }
 
 void calculatePosition(robot_orientation current_orientation, std::pair<double, double>& position) {
@@ -176,10 +178,14 @@ void updateCurrentTile(const std::pair<double, double>& position, const int next
 
 // INIT state, robot waits for push button to be pressed before moving
 void handleInit() {
+  /*
   while (digitalRead(button_pin) == LOW) {
     imu.updateIMU();
   }
-
+*/ 
+  Serial.println("HandleInit");
+  delay(5000);
+  imu.updateIMU();
   heading_offset = imu.getHeading(); 
   pitch_offset = imu.getPitch(); 
   
@@ -187,10 +193,12 @@ void handleInit() {
 }
 
 void handleTileForward() {
-  left_tof.addValue();
+  Serial.println("HandleTileForward");
+  //left_tof.addValue();
   
   if ((imu.getPitch() - pitch_offset) < PITCH_DOWNWARDS_VALUE) {
     setState(PIT_FORWARD);
+    return;
   }
 
   // check for turn or stop
@@ -201,26 +209,31 @@ void handleTileForward() {
 
     if (landmark == 'T') {
       setState(TURN_RIGHT);
+      return;
     } else if (landmark == 'E') {
       setState(STOP);
+      return;
     }
   }
-
+/*
   if (left_tof.shouldAdjustLeft()) {
     setState(LEFT_ADJUST);
+    return;
   }
 
   if (left_tof.shouldAdjustRight()) {
     setState(RIGHT_ADJUST);
+    return;
   }
-
+*/
   left_motor_power = TILE_MOTOR_VALUE;
   right_motor_power = TILE_MOTOR_VALUE;
   left_motor.forward(left_motor_power);
-  right_motor.forward(right_motor_power);
+  right_motor.forward(right_motor_power); 
 }
 
 void handlePitForward() {
+  Serial.println("handlePitForward");
 
   if((imu.getPitch() + pitch_offset) < pitch_offset - 5) {
     left_motor_power = PIT_MOTOR_LOW;
@@ -255,6 +268,7 @@ void handlePitForward() {
 }
 
 void handleTurnRight() {
+  Serial.println("handleTurnRight");
   int target_heading = imu.getHeading() - 90 < 0 ? imu.getHeading() - 90 + 360 : imu.getHeading() - 90; 
 
   left_motor.stop();
@@ -288,10 +302,11 @@ void handleTurnRight() {
 
   heading_offset =  heading_offset - 90 < 0 ? heading_offset - 90 + 360 : heading_offset - 90; 
   setState(TILE_FORWARD);
-  left_tof.clearValues();
+  //left_tof.clearValues();
 }
 
 void handleLeftAdjust() {
+    Serial.println("handleLeftAdjust");
     right_motor_power = ADJUST_VALUE + TILE_MOTOR_VALUE;
     right_motor.forward(right_motor_power);
 
@@ -301,6 +316,7 @@ void handleLeftAdjust() {
 }
 
 void handleRightAdjust() {
+    Serial.println("handleRightAdjust");
     left_motor_power = ADJUST_VALUE + TILE_MOTOR_VALUE;
     left_motor.forward(left_motor_power);
 
@@ -310,14 +326,14 @@ void handleRightAdjust() {
 }
 
 void handleStop() {
+  Serial.println("handleStop");
   left_motor.stop();
   right_motor.stop();
-  setState(INIT);
+  Serial.println("STOP!!");
 }
 
 void setup() {
   Serial.begin(115200);
-  pinMode(50, INPUT);
 
   // wait until serial port opens for native USB devices
   while (!Serial) {
@@ -372,13 +388,16 @@ void setup() {
   robot_state = INIT;
   current_orientation = BOTTOM;
   current_tile = 0;
+
+  Serial.println(F("Set up all sensors"));
 }
 
 void loop() {
+  Serial.println("LOOOP");
+
   imu.updateIMU();
-  Serial.println(robot_state);
-  Serial.println(current_tile); 
   // calculate position and localize (match with map)
+  
   calculatePosition(current_orientation, robot_position);
   int next_tile = current_tile + 1;
 
@@ -389,7 +408,7 @@ void loop() {
     updateCurrentTile(robot_position, next_tile, current_tile);
   }
 
-  prev_pitch = imu.getPitch();
+  prev_pitch = imu.getPitch(); 
 
   switch (robot_state) {
     case INIT:
@@ -397,21 +416,29 @@ void loop() {
       break;
     case TILE_FORWARD:
       handleTileForward();
+      //setState(PIT_FORWARD);
       break;
     case PIT_FORWARD:
-      handlePitForward();
+      //handlePitForward();
+      setState(TILE_FORWARD);
       break;
     case TURN_RIGHT:
-      handleTurnRight();
+      //handleTurnRight();
+      setState(TILE_FORWARD);
       break;
     case LEFT_ADJUST:
-      handleLeftAdjust();
+     // handleLeftAdjust();
+     setState(TILE_FORWARD);
       break;
     case RIGHT_ADJUST:
-      handleRightAdjust();
+     // handleRightAdjust();
+     setState(TILE_FORWARD);
       break;
     case STOP:
-      handleStop();
+     // handleStop();
+     setState(TILE_FORWARD);
       break;
   }
+
+  delay(200); 
 }
