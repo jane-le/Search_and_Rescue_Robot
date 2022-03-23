@@ -58,7 +58,6 @@ const double TILE_WIDTH = 300;
 int left_motor_power = 0;
 int right_motor_power = 0;
 double prev_pitch = 0;
-const int SAND_MOTOR_VALUE = 60;
 const int PIT_MOTOR_LOW = 40;
 const int PIT_MOTOR_MED = 50;
 const int PIT_MOTOR_HIGH = 60;
@@ -72,16 +71,15 @@ const int ROBOT_MOTOR_OFFSET = 5;
 
 const double CENTER_TILE_TOL = 10;
 
-const double PITCH_UPWARDS_VALUE = 30;
-const double PITCH_DOWNWARDS_VALUE = -30;
-const double ADJUST_VALUE = 1;
+const double PITCH_UPWARDS_VALUE = 40;
+const double PITCH_DOWNWARDS_VALUE = -40;
+const double ADJUST_VALUE = 10;
 
 
 // Initialize a motor
 Motor left_motor(L_MOTOR_PWM, L_MOTOR_PIN1, L_MOTOR_PIN2);
 Motor right_motor(R_MOTOR_PWM, R_MOTOR_PIN1, R_MOTOR_PIN2);
 
-TOF left_tof_actual(LOX1_ADDRESS, SHT_LOX1);
 TOF front_tof(LOX2_ADDRESS, SHT_LOX2);
 TOF back_tof(LOX3_ADDRESS, SHT_LOX3);
 
@@ -128,7 +126,7 @@ void setState(robot_state_t new_state) {
 
 void calculatePosition(robot_orientation current_orientation, std::pair<double, double>& position) {
 
-  if(abs(imu.getPitch() - pitch_offset) > 5) {
+  if(abs(imu.getPitch() - pitch_offset) > 10) {
     return;
   }
   
@@ -160,7 +158,7 @@ void calculatePosition(robot_orientation current_orientation, std::pair<double, 
 }
 
 void updateCurrentTile(const std::pair<double, double>& position, const int next_tile, int& current_tile) {
-  if(abs(imu.getPitch() - pitch_offset) > 5) {
+  if(abs(imu.getPitch() - pitch_offset) > 10) {
     return;
   }
   
@@ -178,7 +176,9 @@ void updateCurrentTile(const std::pair<double, double>& position, const int next
 
 // INIT state, robot waits for push button to be pressed before moving
 void handleInit() {
-  while (digitalRead(button_pin) == LOW) {}
+  while (digitalRead(button_pin) == LOW) {
+    imu.updateIMU();
+  }
 
   heading_offset = imu.getHeading(); 
   pitch_offset = imu.getPitch(); 
@@ -213,6 +213,11 @@ void handleTileForward() {
   if (left_tof.shouldAdjustRight()) {
     setState(RIGHT_ADJUST);
   }
+
+  left_motor_power = TILE_MOTOR_VALUE;
+  right_motor_power = TILE_MOTOR_VALUE;
+  left_motor.forward(left_motor_power);
+  right_motor.forward(right_motor_power);
 }
 
 void handlePitForward() {
@@ -241,7 +246,7 @@ void handlePitForward() {
       
     // exit pit state
     while(!(imu.getPitch() > pitch_offset - 5 && imu.getPitch() < pitch_offset + 5)) {
-      imu.update();   
+      imu.updateIMU();   
     }
       
     setState(TILE_FORWARD);
@@ -281,25 +286,25 @@ void handleTurnRight() {
   }
 
 
-  heading_offset = imu.getHeading(); 
+  heading_offset =  heading_offset - 90 < 0 ? heading_offset - 90 + 360 : heading_offset - 90; 
   setState(TILE_FORWARD);
   left_tof.clearValues();
 }
 
 void handleLeftAdjust() {
-    right_motor_power += ADJUST_VALUE;
+    right_motor_power = ADJUST_VALUE + TILE_MOTOR_VALUE;
     right_motor.forward(right_motor_power);
 
-    if(abs(imu.getHeading() - heading_offset) < 10) {
+    if(abs(imu.getHeading() - heading_offset) < 5) {
       setState(TILE_FORWARD);
     }
 }
 
 void handleRightAdjust() {
-    left_motor_power += ADJUST_VALUE;
+    left_motor_power = ADJUST_VALUE + TILE_MOTOR_VALUE;
     left_motor.forward(left_motor_power);
 
-    if(abs(imu.getHeading() - heading_offset) < 10) {
+    if(abs(imu.getHeading() - heading_offset) < 5) {
       setState(TILE_FORWARD);
     }
 }
@@ -320,25 +325,25 @@ void setup() {
   }
 
   Serial.println(F("Setting up TOF")); 
-  pinMode(left_tof_actual.shutdownPin, OUTPUT);
+  pinMode(left_tof.shutdownPin, OUTPUT);
   pinMode(front_tof.shutdownPin, OUTPUT);
   pinMode(back_tof.shutdownPin, OUTPUT);
   delay(10);
   
   // all reset   
-  digitalWrite(left_tof_actual.shutdownPin, LOW);
+  digitalWrite(left_tof.shutdownPin, LOW);
   digitalWrite(front_tof.shutdownPin, LOW);
   digitalWrite(back_tof.shutdownPin, LOW);
   delay(10);
 
   // all unreset   
-  digitalWrite(left_tof_actual.shutdownPin, HIGH);
+  digitalWrite(left_tof.shutdownPin, HIGH);
   digitalWrite(front_tof.shutdownPin, HIGH);
   digitalWrite(back_tof.shutdownPin, HIGH);
   delay(10);
 
   // activating leftTOF and resetting other two
-  digitalWrite(left_tof_actual.shutdownPin, HIGH);
+  digitalWrite(left_tof.shutdownPin, HIGH);
   digitalWrite(front_tof.shutdownPin, LOW);
   digitalWrite(back_tof.shutdownPin, LOW);
   Serial.println(F("Here"));
@@ -370,6 +375,9 @@ void setup() {
 }
 
 void loop() {
+  imu.updateIMU();
+  Serial.println(robot_state);
+  Serial.println(current_tile); 
   // calculate position and localize (match with map)
   calculatePosition(current_orientation, robot_position);
   int next_tile = current_tile + 1;
@@ -382,7 +390,6 @@ void loop() {
   }
 
   prev_pitch = imu.getPitch();
-  imu.update();
 
   switch (robot_state) {
     case INIT:
