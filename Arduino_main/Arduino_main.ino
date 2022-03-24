@@ -15,12 +15,10 @@
 // Digital pins connected to TOF sensors
 #define SHT_LOX1 23
 #define SHT_LOX2 25
-#define SHT_LOX3 27
 
 // I2C addressing of TOF sensors
 #define LOX1_ADDRESS 0x30
 #define LOX2_ADDRESS 0x31
-#define LOX3_ADDRESS 0x32
 
 // motor pins
 #define L_MOTOR_PWM 2
@@ -66,7 +64,7 @@ const int PIT_MOTOR_HIGH = 60;
 const int PIT_INCREMENT = 2; 
 const int TILE_MOTOR_VALUE = 60;
 const int TURN_MOTOR_VALUE_LEFT = 50;
-const int TURN_MOTOR_VALUE_RIGHT = 50; // either stop (speed 0) or 50 in the reverse direction
+const int TURN_MOTOR_VALUE_RIGHT = 50; 
 const int ROBOT_WIDTH = 150;
 const int ROBOT_LENGTH = 190;
 const int ROBOT_MOTOR_OFFSET = 5;
@@ -82,11 +80,9 @@ Motor left_motor(L_MOTOR_PWM, L_MOTOR_PIN1, L_MOTOR_PIN2);
 Motor right_motor(R_MOTOR_PWM, R_MOTOR_PIN1, R_MOTOR_PIN2);
 
 TOF front_tof(LOX2_ADDRESS, SHT_LOX2);
-TOF back_tof(LOX3_ADDRESS, SHT_LOX3);
+TOF left_tof(LOX1_ADDRESS, SHT_LOX1); 
 
 IMU imu;
-
-TOF left_tof(LOX1_ADDRESS, SHT_LOX1); 
 
 
 int heading_offset = 0; 
@@ -100,13 +96,13 @@ std::map<std::pair<int, int>, char> course = {
 };
 
 // F = front tof, B = back tof, x and y in mm, based on 1.8 m
-std::vector<std::vector<MicroTuple<int, int, char>>> coords = {
-  {{150, 150, 'F'}, {450, 150, 'B'}, {750, 150, 'B'}, {1050, 150, 'F'}, {1350, 150, 'F'}, {1650, 150, 'F'}},
-  {{150, 450, 'F'}, {450, 450, 'F'}, {750, 450, 'B'}, {1050, 450, 'F'}, {1350, 450, 'F'}, {1650, 450, 'B'}},
-  {{150, 750, 'F'}, {450, 750, 'F'}, {750, 750, 'F'}, {1050, 750, 'F'}, {1350, 750, 'B'}, {1650, 750, 'B'}},
-  {{150, 1050, 'B'}, {450, 1050, 'B'}, {750, 1050, 'F'}, {1050, 1050, 'B'}, {1350, 1050, 'F'}, {1650, 1050, 'F'}},
-  {{150, 1350, 'B'}, {450, 1350, 'F'}, {750, 1350, 'F'}, {1050, 1350, 'B'}, {1350, 1350, 'B'}, {1650, 1350, 'F'}},
-  {{150, 1650, 'F'}, {450, 1650, 'F'}, {750, 1650, 'F'}, {1050, 1650, 'B'}, {1350, 1650, 'B'}, {1650, 1650, 'F'}}
+std::vector<std::vector<std::pair<int, int>> coords = {
+  {{150, 150}, {450, 150}, {750, 150}, {1050, 150}, {1350, 150}, {1650, 150}},
+  {{150, 450}, {450, 450}, {750, 450}, {1050, 450}, {1350, 450}, {1650, 450}},
+  {{150, 750}, {450, 750}, {750, 750}, {1050, 750}, {1350, 750}, {1650, 750}},
+  {{150, 1050}, {450, 1050}, {750, 1050}, {1050, 1050}, {1350, 1050}, {1650, 1050}},
+  {{150, 1350}, {450, 1350}, {750, 1350}, {1050, 1350}, {1350, 1350}, {1650, 1350}},
+  {{150, 1650}, {450, 1650}, {750, 1650}, {1050, 1650}, {1350, 1650}, {1650, 1650}}
 };
 
 std::vector<std::pair<int, int>> path = {
@@ -128,55 +124,32 @@ void setState(robot_state_t new_state) {
 }
 
 void calculatePosition(robot_orientation current_orientation, std::pair<double, double>& position) {
-  
-  Serial.println("TOF values");
-
-  int front_tof_value = front_tof.getDistance(); 
   int left_tof_value = left_tof.getDistance();
-  int back_tof_value = back_tof.getDistance();
-  Serial.println(front_tof_value);
-  Serial.println(left_tof_value);
-  Serial.println(back_tof_value);
+  int front_tof_value = front_tof.getDistance();
 
-  /*
-  if(abs(imu.getPitch() - pitch_offset) > 30) {
-    Serial.println("didn't calculate");
-    return;
-  }  */  
-  MicroTuple<int, int, char> coord = coords[path[current_tile + 1].first][path[current_tile+1].second];
-  char which_tof = coord.get<2>();
-
-  if (left_tof_value == -1) {
+  if (left_tof_value == -1 || front_tof_value == -1) {
     return;   
   }
-  if(which_tof == 'B' && back_tof_value == -1) {
-    return;
-  }
-
-  if(which_tof == 'F' && front_tof_value == -1) {
-    return;
-  }
   
-
   switch (current_orientation) {
     case LEFT:
-      position.first = left_tof.getDistance();
-      position.second = which_tof == 'B' ? WIDTH - back_tof.getDistance() : front_tof.getDistance();
+      position.first = left_tof_value + ROBOT_WIDTH / 2.0;
+      position.second = front_tof_value + ROBOT_LENGTH / 2.0;
       break;
 
     case RIGHT:
-      position.first = WIDTH - left_tof.getDistance();
-      position.second = which_tof == 'B' ? back_tof.getDistance() : WIDTH - front_tof.getDistance();
+      position.first = WIDTH - left_tof_value - ROBOT_WIDTH / 2.0;
+      position.second = WIDTH - front_tof_value - ROBOT_LENGTH / 2.0; 
       break;
 
     case TOP:
-      position.first = which_tof == 'B' ? back_tof.getDistance() : WIDTH - front_tof.getDistance();
-      position.second = left_tof.getDistance();
+      position.first = WIDTH - front_tof_value - ROBOT_LENGTH / 2.0; 
+      position.second = front_tof_value + ROBOT_LENGTH / 2.0;
       break;
 
     case BOTTOM:
-      position.first = which_tof == 'B' ? WIDTH - back_tof.getDistance() : front_tof.getDistance();
-      position.second = WIDTH - left_tof.getDistance();
+      position.first = front_tof_value + ROBOT_LENGTH / 2.0; 
+      position.second = WIDTH - left_tof_value - ROBOT_WIDTH / 2.0;
       break;
   }  
 }
@@ -193,19 +166,17 @@ void updateCurrentTile(const std::pair<double, double>& position, const int next
   double position_x = position.first;
   double position_y = position.second;
 
+  // check if we're in the next tile
   if (position_x <= next_center_x + TILE_WIDTH / 2.0 && position_x > next_center_x - TILE_WIDTH / 2.0
-      && position_y <= next_center_y + TILE_WIDTH / 2.0 && position_y > next_center_y - TILE_WIDTH / 2.0) { // this may need tolerances
+      && position_y <= next_center_y + TILE_WIDTH / 2.0 && position_y > next_center_y - TILE_WIDTH / 2.0) {
     current_tile = next_tile;
-  }
+  } 
+  // check if we're in the current tile 
+  // if we're not in either where the hell are we? check 
 }
 
 // INIT state, robot waits for push button to be pressed before moving
 void handleInit() {
-  /*
-  while (digitalRead(button_pin) == LOW) {
-    imu.updateIMU();
-  }
-*/ 
   Serial.println("HandleInit");
   delay(5000);
   imu.updateIMU();
@@ -368,39 +339,32 @@ void setup() {
   Serial.println(F("Setting up TOF")); 
   pinMode(left_tof.shutdownPin, OUTPUT);
   pinMode(front_tof.shutdownPin, OUTPUT);
-  pinMode(back_tof.shutdownPin, OUTPUT);
   delay(10);
   
   // all reset   
   digitalWrite(left_tof.shutdownPin, LOW);
   digitalWrite(front_tof.shutdownPin, LOW);
-  digitalWrite(back_tof.shutdownPin, LOW);
   delay(10);
 
   // all unreset   
   digitalWrite(left_tof.shutdownPin, HIGH);
   digitalWrite(front_tof.shutdownPin, HIGH);
-  digitalWrite(back_tof.shutdownPin, HIGH);
+  
   delay(10);
 
   // activating leftTOF and resetting other two
   digitalWrite(left_tof.shutdownPin, HIGH);
   digitalWrite(front_tof.shutdownPin, LOW);
-  digitalWrite(back_tof.shutdownPin, LOW);
-  Serial.println(F("Here"));
   left_tof.init();
 
   delay(10);
-  Serial.println(F("Set up TOF"));
+  Serial.println(F("Set up  Left TOF"));
 
   digitalWrite(front_tof.shutdownPin, HIGH);
   front_tof.init();
   Serial.println(F("Set up front TOF"));
 
   delay(10);
-  
-  digitalWrite(back_tof.shutdownPin, HIGH);
-  back_tof.init();
   Serial.println(F("Set up all TOF"));
 
   
