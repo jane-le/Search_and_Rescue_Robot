@@ -306,11 +306,15 @@ void handleGravelForward() {
     // 8. in gravel, exit to pit
     // 9. in gravel, exit to tile
     
-    if (color_sensor.isSand()) {
-        setState(SAND_FORWARD);
-    } else if (color_sensor.isTile()) {
-        setState(TILE_FORWARD);
-    } else if ((imu.getPitch() - prev_pitch) < PITCH_DOWNWARDS_VALUE) {
+//    if (color_sensor.isSand()) {
+//        setState(SAND_FORWARD);
+//    } else if (color_sensor.isTile()) {
+//        setState(TILE_FORWARD);
+//    } else if ((imu.getPitch() - prev_pitch) < PITCH_DOWNWARDS_VALUE) {
+//        setState(PIT_FORWARD);
+//    }
+
+    if ((imu.getPitch() - prev_pitch) < PITCH_DOWNWARDS_VALUE) {
         setState(PIT_FORWARD);
     }
 }
@@ -414,46 +418,46 @@ void setup() {
       delay(1);
     }
     
-    //  Serial.println(F("Setting up TOF"));
-    //  pinMode(leftTOF.shutdownPin, OUTPUT);    
-    //  pinMode(frontTOF.shutdownPin, OUTPUT);
-    //  pinMode(backTOF.shutdownPin, OUTPUT);
-    //  delay(10);
-    //  
-    //  // all reset
-    //  digitalWrite(leftTOF.shutdownPin, LOW);    
-    //  digitalWrite(frontTOF.shutdownPin, LOW);
-    //  digitalWrite(backTOF.shutdownPin, LOW);
-    //  delay(10);
-    //
-    //  // all unreset
-    //  digitalWrite(leftTOF.shutdownPin, HIGH);    
-    //  digitalWrite(frontTOF.shutdownPin, HIGH);
-    //  digitalWrite(backTOF.shutdownPin, HIGH);
-    //  delay(10);
-    //
-    //  // activating leftTOF and resetting other two
-    //  digitalWrite(leftTOF.shutdownPin, HIGH);
-    //  digitalWrite(frontTOF.shutdownPin, LOW);
-    //  digitalWrite(backTOF.shutdownPin, LOW);
-    //  Serial.println(F("Here"));
-    //  leftTOF.init();
-    //  delay(10);
-    //  Serial.println(F("Set up TOF"));
-    //
-    //  digitalWrite(frontTOF.shutdownPin, HIGH);
-    //  frontTOF.init();
-    //  Serial.println(F("Set up front TOF"));
-    //
-    //  delay(10);
-    //  
-    //  digitalWrite(backTOF.shutdownPin, HIGH);
-    //  backTOF.init();
-    //  Serial.println(F("Set up all TOF"));
+    Serial.println(F("Setting up TOF"));
+    pinMode(left_tof.shutdownPin, OUTPUT);    
+    pinMode(front_tof.shutdownPin, OUTPUT);
+    pinMode(back_tof.shutdownPin, OUTPUT);
+    delay(10);
+    
+    // all reset
+    digitalWrite(left_tof.shutdownPin, LOW);    
+    digitalWrite(front_tof.shutdownPin, LOW);
+    digitalWrite(back_tof.shutdownPin, LOW);
+    delay(10);
+  
+    // all unreset
+    digitalWrite(left_tof.shutdownPin, HIGH);    
+    digitalWrite(front_tof.shutdownPin, HIGH);
+    digitalWrite(back_tof.shutdownPin, HIGH);
+    delay(10);
+  
+    // activating leftTOF and resetting other two
+    digitalWrite(left_tof.shutdownPin, HIGH);
+    digitalWrite(front_tof.shutdownPin, LOW);
+    digitalWrite(back_tof.shutdownPin, LOW);
+    Serial.println(F("Here"));
+    leftTOF.init();
+    delay(10);
+    Serial.println(F("Set up TOF"));
+  
+    digitalWrite(front_tof.shutdownPin, HIGH);
+    frontTOF.init();
+    Serial.println(F("Set up front TOF"));
+  
+    delay(10);
+    
+    digitalWrite(back_tof.shutdownPin, HIGH);
+    backTOF.init();
+    Serial.println(F("Set up all TOF"));
     
     // setup motors and encoders
-    leftMotor.init();
-    rightMotor.init();
+    left_motor.init();
+    right_motor.init();
     
     // then initialize imu
     //imu.init();
@@ -465,6 +469,7 @@ void setup() {
 
 void loop() {
     // calculate position and localize (match with map)
+    imu.update();
     calculatePosition(current_orientation, robot_position);
     int next_tile = current_tile + 1; 
 
