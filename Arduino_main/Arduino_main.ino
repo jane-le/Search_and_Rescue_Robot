@@ -1,5 +1,3 @@
-
-
 #if ARDUINO >= 100
 #include "Arduino.h"
 #else
@@ -70,6 +68,10 @@ const int TURN_MOTOR_VALUE_RIGHT = 50; // either stop (speed 0) or 50 in the rev
 const int ROBOT_WIDTH = 150;
 const int ROBOT_LENGTH = 190;
 const int ROBOT_MOTOR_OFFSET = 5;
+const int RIGHT_ADJUST_DIST_TOL = -10;
+const int RIGHT_ADJUST_ANGLE_TOL = 10;
+const int LEFT_ADJUST_DIST_TOL = 10;
+const int LEFT_ADJUST_ANGLE_TOL = 10;
 
 const double CENTER_TILE_TOL = 10;
 
@@ -91,6 +93,7 @@ TOF left_tof(LOX1_ADDRESS, SHT_LOX1);
 
 int heading_offset = 0; 
 int pitch_offset = 0; 
+int left_tof_offset = 0;
 
 // S = start, E = end, T = turn
 std::map<std::pair<int, int>, char> course = {
@@ -199,6 +202,22 @@ void updateCurrentTile(const std::pair<double, double>& position, const int next
   }
 }
 
+bool shouldAdjustRight() {
+  if ((left_tof.getDistance() - left_tof_offset) < RIGHT_ADJUST_DIST_TOL || (imu.getHeading() - heading_offset) > RIGHT_ADJUST_ANGLE_TOL ) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+bool shouldAdjustLeft() {
+  if ((left_tof.getDistance() - left_tof_offset) > LEFT_ADJUST_DIST_TOL || (heading_offset - imu.getHeading()) > LEFT_ADJUST_ANGLE_TOL ) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
 // INIT state, robot waits for push button to be pressed before moving
 void handleInit() {
   /*
@@ -211,12 +230,12 @@ void handleInit() {
   imu.updateIMU();
   heading_offset = imu.getHeading(); 
   pitch_offset = imu.getPitch(); 
+  left_tof_offset = left_tof.getDistance();
   
   setState(TILE_FORWARD);
 }
 
 void handleTileForward() {
-  Serial.println("HandleTileForward");
   //left_tof.addValue();
   
   if ((imu.getPitch() - pitch_offset) < PITCH_DOWNWARDS_VALUE) {
@@ -238,19 +257,21 @@ void handleTileForward() {
       return;
     }
   }
-/*
-  if (left_tof.shouldAdjustLeft()) {
+
+  left_motor_power = TILE_MOTOR_VALUE;
+  right_motor_power = TILE_MOTOR_VALUE;
+
+  // drive straight
+  if (shouldAdjustLeft()) {
     setState(LEFT_ADJUST);
     return;
   }
 
-  if (left_tof.shouldAdjustRight()) {
+  if (shouldAdjustRight()) {
     setState(RIGHT_ADJUST);
     return;
   }
-*/
-  left_motor_power = TILE_MOTOR_VALUE;
-  right_motor_power = TILE_MOTOR_VALUE;
+
   left_motor.backward(left_motor_power);
   right_motor.backward(right_motor_power); 
 }
@@ -292,7 +313,7 @@ void handlePitForward() {
 
 void handleTurnRight() {
   Serial.println("handleTurnRight");
-  int target_heading = imu.getHeading() - 90 < 0 ? imu.getHeading() - 90 + 360 : imu.getHeading() - 90; 
+  int target_heading = imu.getHeading() - 90 < 0 ? imu.getHeading() - 90 + 360 : imu.getHeading() - 90; // should we use heading offset here??
 
   left_motor.stop();
   right_motor.stop();
@@ -323,8 +344,8 @@ void handleTurnRight() {
       break;
   }
 
-
-  heading_offset =  heading_offset - 90 < 0 ? heading_offset - 90 + 360 : heading_offset - 90; 
+  left_tof_offset = left_tof.getDistance(); // get new correct distance to wall (the distance to keep straight at)
+  heading_offset =  heading_offset - 90 < 0 ? heading_offset - 90 + 360 : heading_offset - 90; // calculate new correct heading
   setState(TILE_FORWARD);
   last_turned_tile = current_tile;
   //left_tof.clearValues();
@@ -333,9 +354,10 @@ void handleTurnRight() {
 void handleLeftAdjust() {
     Serial.println("handleLeftAdjust");
     right_motor_power = ADJUST_VALUE + TILE_MOTOR_VALUE;
+    left_motor.backward(left_motor_power);
     right_motor.backward(right_motor_power);
 
-    if(abs(imu.getHeading() - heading_offset) < 5) {
+    if(abs(imu.getHeading() - heading_offset) < 10) {
       setState(TILE_FORWARD);
     }
 }
@@ -344,8 +366,9 @@ void handleRightAdjust() {
     Serial.println("handleRightAdjust");
     left_motor_power = ADJUST_VALUE + TILE_MOTOR_VALUE;
     left_motor.backward(left_motor_power);
+    right_motor.backward(right_motor_power);
 
-    if(abs(imu.getHeading() - heading_offset) < 5) {
+    if(abs(imu.getHeading() - heading_offset) < 10) {
       setState(TILE_FORWARD);
     }
 }
