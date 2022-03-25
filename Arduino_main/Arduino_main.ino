@@ -57,17 +57,17 @@ int left_motor_power = 0;
 int right_motor_power = 0;
 int last_turned_tile = -1; 
 
-double prev_pitch = 0;
 const int PIT_MOTOR_LOW = 40;
 const int PIT_MOTOR_MED = 50;
 const int PIT_MOTOR_HIGH = 60;
 const int PIT_INCREMENT = 2; 
 const int TILE_MOTOR_VALUE = 60;
-const int TURN_MOTOR_VALUE_LEFT = 50;
-const int TURN_MOTOR_VALUE_RIGHT = 50; 
+const int TURN_MOTOR_VALUE = 40;
+const int SLOW_MOTOR_VALUE = 50;
 const int ROBOT_WIDTH = 150;
 const int ROBOT_LENGTH = 190;
 const int ROBOT_MOTOR_OFFSET = 5;
+const int LEFT_DIST_TOL = 30;
 
 const double CENTER_TILE_TOL = 10;
 
@@ -87,6 +87,7 @@ IMU imu;
 
 int heading_offset = 0; 
 int pitch_offset = 0; 
+int des_left_offset = 0;
 
 // S = start, E = end, T = turn
 std::map<std::pair<int, int>, char> course = {
@@ -96,7 +97,7 @@ std::map<std::pair<int, int>, char> course = {
 };
 
 // F = front tof, B = back tof, x and y in mm, based on 1.8 m
-std::vector<std::vector<std::pair<int, int>> coords = {
+std::vector<std::vector<std::pair<int, int>>> coords = {
   {{150, 150}, {450, 150}, {750, 150}, {1050, 150}, {1350, 150}, {1650, 150}},
   {{150, 450}, {450, 450}, {750, 450}, {1050, 450}, {1350, 450}, {1650, 450}},
   {{150, 750}, {450, 750}, {750, 750}, {1050, 750}, {1350, 750}, {1650, 750}},
@@ -118,7 +119,6 @@ std::vector<std::pair<int, int>> path = {
 /* ------------ Functions --------------- */
 
 void setState(robot_state_t new_state) {
-  Serial.println("Set State");
   robot_state = new_state;
   Serial.println(robot_state);
 }
@@ -136,17 +136,14 @@ void calculatePosition(robot_orientation current_orientation, std::pair<double, 
       position.first = left_tof_value + ROBOT_WIDTH / 2.0;
       position.second = front_tof_value + ROBOT_LENGTH / 2.0;
       break;
-
     case RIGHT:
       position.first = WIDTH - left_tof_value - ROBOT_WIDTH / 2.0;
       position.second = WIDTH - front_tof_value - ROBOT_LENGTH / 2.0; 
       break;
-
     case TOP:
       position.first = WIDTH - front_tof_value - ROBOT_LENGTH / 2.0; 
       position.second = front_tof_value + ROBOT_LENGTH / 2.0;
       break;
-
     case BOTTOM:
       position.first = front_tof_value + ROBOT_LENGTH / 2.0; 
       position.second = WIDTH - left_tof_value - ROBOT_WIDTH / 2.0;
@@ -155,14 +152,14 @@ void calculatePosition(robot_orientation current_orientation, std::pair<double, 
 }
 
 void updateCurrentTile(const std::pair<double, double>& position, const int next_tile, int& current_tile) {
-  /*
-  if(abs(imu.getPitch() - pitch_offset) > 10) {
-    return;
-  }*/
   
-  MicroTuple<int, int, char> coord = coords[path[next_tile].first][path[next_tile].second];
-  double next_center_x = coord.get<0>();
-  double next_center_y = coord.get<1>();
+  if(abs(imu.getPitch() - pitch_offset) > 40) {
+    return;
+  }
+  
+  std::pair<int, int> coord = coords[path[next_tile].first][path[next_tile].second];
+  double next_center_x = coord.first;
+  double next_center_y = coord.second;
   double position_x = position.first;
   double position_y = position.second;
 
@@ -170,9 +167,55 @@ void updateCurrentTile(const std::pair<double, double>& position, const int next
   if (position_x <= next_center_x + TILE_WIDTH / 2.0 && position_x > next_center_x - TILE_WIDTH / 2.0
       && position_y <= next_center_y + TILE_WIDTH / 2.0 && position_y > next_center_y - TILE_WIDTH / 2.0) {
     current_tile = next_tile;
+    return;
   } 
-  // check if we're in the current tile 
-  // if we're not in either where the hell are we? check 
+  
+  // check if we're not in the current tile and if we're not, where the hell are we?
+  std::pair<int, int> curr_coord = coords[path[current_tile].first][path[current_tile].second];
+  double curr_center_x = coord.first;
+  double curr_center_y = coord.second;
+
+  if (position_x > curr_center_x + TILE_WIDTH / 2.0 || position_x < curr_center_x - TILE_WIDTH / 2.0
+      && position_y > curr_center_y + TILE_WIDTH / 2.0 || position_y < curr_center_y - TILE_WIDTH / 2.0) {
+    
+    // iterate through coords and find the tile we're on 
+    for(int i = 0; i < 6; i++) {
+        for(int j = 0; j < 6; j++) {
+            std::pair<int, int> ij_coord = coords[i][j];
+            double ij_center_x = coord.first;
+            double ij_center_y = coord.second;
+            
+            if (position_x <= ij_center_x + TILE_WIDTH / 2.0 && position_x > ij_center_x - TILE_WIDTH / 2.0
+                && position_y <= ij_center_y + TILE_WIDTH / 2.0 && position_y > ij_center_y - TILE_WIDTH / 2.0) {
+
+                // iterate through path to get current_tile
+                for(int k = 0; k < path.size(); k++) {
+                  if(path[k].first == i && path[k].second == j) {
+                      current_tile = k; 
+                      return;
+                  }
+                }
+             }
+          }
+      }
+  } 
+}
+
+// returns desired left tof value 
+int getDesLeftDist() {
+  std::pair<int, int> coord = coords[path[current_tile].first][path[current_tile].second];
+  
+  switch (current_orientation) {
+    case LEFT:
+      return coord.first - ROBOT_WIDTH / 2;
+    case RIGHT:
+      return WIDTH - coord.first - ROBOT_WIDTH / 2;
+    case TOP:
+      return coord.second - ROBOT_WIDTH / 2;
+    case BOTTOM:
+      return WIDTH - coord.second - ROBOT_WIDTH / 2;
+  }
+  return 0;
 }
 
 // INIT state, robot waits for push button to be pressed before moving
@@ -182,21 +225,29 @@ void handleInit() {
   imu.updateIMU();
   heading_offset = imu.getHeading(); 
   pitch_offset = imu.getPitch(); 
+  des_left_offset = getDesLeftDist(); 
   
   setState(TILE_FORWARD);
 }
 
+bool shouldAdjustRight() {
+  int left_tof_value = left_tof.getDistance();
+  return (left_tof_value < des_left_offset && abs(left_tof_value-des_left_offset) > LEFT_DIST_TOL);
+}
+
+bool shouldAdjustLeft() {
+  int left_tof_value = left_tof.getDistance();
+  return (left_tof_value > des_left_offset && abs(left_tof_value-des_left_offset) > LEFT_DIST_TOL);
+}
+
 void handleTileForward() {
   Serial.println("HandleTileForward");
-  //left_tof.addValue();
   
   if ((imu.getPitch() - pitch_offset) < PITCH_DOWNWARDS_VALUE) {
     setState(PIT_FORWARD);
     return;
   }
 
-  // check for turn or stop
-  // only change state when robot is center of tile
   std::map<std::pair<int, int>, char>::iterator it = course.find(path[current_tile]);
   if (it != course.end()) {
     char landmark = it->second;
@@ -209,17 +260,17 @@ void handleTileForward() {
       return;
     }
   }
-/*
-  if (left_tof.shouldAdjustLeft()) {
+
+  if(shouldAdjustRight()) {
+    setState(RIGHT_ADJUST);
+    return;
+  }
+
+  if(shouldAdjustLeft()) {
     setState(LEFT_ADJUST);
     return;
   }
 
-  if (left_tof.shouldAdjustRight()) {
-    setState(RIGHT_ADJUST);
-    return;
-  }
-*/
   left_motor_power = TILE_MOTOR_VALUE;
   right_motor_power = TILE_MOTOR_VALUE;
   left_motor.backward(left_motor_power);
@@ -229,7 +280,7 @@ void handleTileForward() {
 void handlePitForward() {
   Serial.println("handlePitForward");
 
-  if((imu.getPitch() + pitch_offset) < pitch_offset - 5) {
+  if((imu.getPitch() + pitch_offset) < pitch_offset - 40) {
     left_motor_power = PIT_MOTOR_LOW;
     right_motor_power = PIT_MOTOR_LOW;
     left_motor.backward(left_motor_power);
@@ -243,7 +294,7 @@ void handlePitForward() {
     right_motor.backward(right_motor_power);
   }
 
-  if((imu.getPitch() + pitch_offset) > pitch_offset + 5) {
+  if((imu.getPitch() + pitch_offset) > pitch_offset + 40) {
     
     left_motor_power = left_motor_power >= PIT_MOTOR_HIGH ? left_motor_power : left_motor_power + PIT_INCREMENT;
     right_motor_power = right_motor_power >=  PIT_MOTOR_HIGH ? right_motor_power : right_motor_power + PIT_INCREMENT;
@@ -252,7 +303,7 @@ void handlePitForward() {
     right_motor.backward(right_motor_power);
       
     // exit pit state
-    while(!(imu.getPitch() > pitch_offset - 5 && imu.getPitch() < pitch_offset + 5)) {
+    while(!(imu.getPitch() > pitch_offset - 10 && imu.getPitch() < pitch_offset + 10)) {
       imu.updateIMU();   
     }
       
@@ -263,15 +314,38 @@ void handlePitForward() {
 
 void handleTurnRight() {
   Serial.println("handleTurnRight");
-  int target_heading = imu.getHeading() - 90 < 0 ? imu.getHeading() - 90 + 360 : imu.getHeading() - 90; 
+  
+  // slow down 
+  left_motor_power = SLOW_MOTOR_VALUE;
+  right_motor_power = SLOW_MOTOR_VALUE;
+  left_motor.backward(left_motor_power);
+  right_motor.backward(right_motor_power); 
+
+  // is our front_tof value in the middle of the tile ? if not return; 
+  std::pair<int, int> coord = coords[path[current_tile].first][path[current_tile].second];
+  double front_dist_tolerance = 30;
+    switch (current_orientation) {
+    case LEFT:
+      if(robot_position.second > coord.second + front_dist_tolerance) return; 
+    case RIGHT:
+      if(robot_position.second < coord.second - front_dist_tolerance) return;
+    case TOP:
+      if(robot_position.first < coord.first - front_dist_tolerance) return;
+    case BOTTOM:
+      if(robot_position.first > coord.first + front_dist_tolerance) return;
+  }  
+  
+  // turn !! 
+  heading_offset =  heading_offset - 90 < 0 ? heading_offset - 90 + 360 : heading_offset - 90; 
+  int target_heading = heading_offset; 
 
   left_motor.stop();
   right_motor.stop();
   
   while (abs(imu.getHeading() - target_heading) > 5) {
     imu.updateIMU();
-    left_motor_power = TURN_MOTOR_VALUE_LEFT;
-    right_motor_power = TURN_MOTOR_VALUE_RIGHT;
+    left_motor_power = TURN_MOTOR_VALUE;
+    right_motor_power = TURN_MOTOR_VALUE;
     left_motor.backward(left_motor_power);
     right_motor.forward(right_motor_power);
   }
@@ -294,19 +368,18 @@ void handleTurnRight() {
       break;
   }
 
-
-  heading_offset =  heading_offset - 90 < 0 ? heading_offset - 90 + 360 : heading_offset - 90; 
+  des_left_offset = getDesLeftDist();
   setState(TILE_FORWARD);
   last_turned_tile = current_tile;
-  //left_tof.clearValues();
 }
 
 void handleLeftAdjust() {
     Serial.println("handleLeftAdjust");
     right_motor_power = ADJUST_VALUE + TILE_MOTOR_VALUE;
+    left_motor.backward(left_motor_power);
     right_motor.backward(right_motor_power);
 
-    if(abs(imu.getHeading() - heading_offset) < 5) {
+    if(abs(imu.getHeading() - heading_offset) < 10 && abs(left_tof.getDistance()-des_left_offset) < LEFT_DIST_TOL) {
       setState(TILE_FORWARD);
     }
 }
@@ -315,8 +388,9 @@ void handleRightAdjust() {
     Serial.println("handleRightAdjust");
     left_motor_power = ADJUST_VALUE + TILE_MOTOR_VALUE;
     left_motor.backward(left_motor_power);
+    right_motor.backward(right_motor_power);
 
-    if(abs(imu.getHeading() - heading_offset) < 5) {
+    if(abs(imu.getHeading() - heading_offset) < 10 && abs(left_tof.getDistance()-des_left_offset) < LEFT_DIST_TOL) {
       setState(TILE_FORWARD);
     }
 }
@@ -325,7 +399,7 @@ void handleStop() {
   Serial.println("handleStop");
   left_motor.stop();
   right_motor.stop();
-  Serial.println("STOP!!");
+  Serial.println("STOP!!!");
 }
 
 void setup() {
@@ -387,19 +461,9 @@ void setup() {
 }
 
 void loop() {
-  Serial.println("State");
-  Serial.println(robot_state);
-  Serial.println("Current Tile");
-  Serial.println(current_tile);
-  Serial.println("Current Orientation");
-  Serial.println(current_orientation);
-  Serial.println("Position");
-  Serial.println(robot_position.first);
-  Serial.println(robot_position.second);
-
   imu.updateIMU();
-  // calculate position and localize (match with map)
   
+  // calculate position and localize (match with map)
   calculatePosition(current_orientation, robot_position);
   int next_tile = current_tile + 1;
 
@@ -409,8 +473,6 @@ void loop() {
     // update current tile to next tile if position is in the bounds, update robot path
     updateCurrentTile(robot_position, next_tile, current_tile);
   }
-
-  prev_pitch = imu.getPitch(); 
 
   switch (robot_state) {
     case INIT:
@@ -436,5 +498,5 @@ void loop() {
      break;
   }
 
-  delay(200); 
+  delay(50); 
 }
