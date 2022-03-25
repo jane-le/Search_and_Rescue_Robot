@@ -1,5 +1,3 @@
-
-
 #if ARDUINO >= 100
 #include "Arduino.h"
 #else
@@ -88,6 +86,7 @@ IMU imu;
 int heading_offset = 0; 
 int pitch_offset = 0; 
 int des_left_offset = 0;
+
 
 // S = start, E = end, T = turn
 std::map<std::pair<int, int>, char> course = {
@@ -233,6 +232,22 @@ int getDesLeftDist() {
   return 0;
 }
 
+bool shouldAdjustRight() {
+  if ((left_tof.getDistance() - left_tof_offset) < RIGHT_ADJUST_DIST_TOL || (imu.getHeading() - heading_offset) > RIGHT_ADJUST_ANGLE_TOL ) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+bool shouldAdjustLeft() {
+  if ((left_tof.getDistance() - left_tof_offset) > LEFT_ADJUST_DIST_TOL || (heading_offset - imu.getHeading()) > LEFT_ADJUST_ANGLE_TOL ) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
 // INIT state, robot waits for push button to be pressed before moving
 void handleInit() {
   Serial.println("HandleInit");
@@ -241,6 +256,7 @@ void handleInit() {
   heading_offset = imu.getHeading(); 
   pitch_offset = imu.getPitch(); 
   des_left_offset = getDesLeftDist(); 
+
   
   setState(TILE_FORWARD);
 }
@@ -257,6 +273,7 @@ bool shouldAdjustLeft() {
 
 void handleTileForward() {
   Serial.println("HandleTileForward");
+
   
   if ((imu.getPitch() - pitch_offset) < PITCH_DOWNWARDS_VALUE) {
     setState(PIT_FORWARD);
