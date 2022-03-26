@@ -7,7 +7,7 @@
 #include <Adafruit_AHRS.h>
 #include <Adafruit_ICM20X.h>
 #include <Adafruit_ICM20948.h>
-#include <queue>
+//#include <queue>
 
 // functions for motors
 
@@ -98,7 +98,7 @@ class IMU {
 // functions for TOF sensor
 class TOF {
   public:
-    TOF(uint16_t lox_address, uint16_t shutdown_pin);
+    TOF(uint16_t lox_address, uint16_t shutdown_pin, bool is_left);
     void init();
     int getDistance();
     uint16_t shutdownPin;
@@ -117,7 +117,7 @@ class LeftTOF {
 	    void init();
 	    int getDistance();
 	    uint16_t shutdownPin;
-	    std::queue<uint16_t> buffer_;
+	    //std::queue<uint16_t> buffer_;
 	    void addValue();
         uint16_t getValue();
         void clearValues();
