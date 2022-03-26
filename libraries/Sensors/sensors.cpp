@@ -17,20 +17,6 @@
 // uncomment this for calibration
 //#define CALIBRATE_IMU
 
-#define SAND_R_MIN 100
-#define SAND_R_MAX 120
-#define SAND_G_MIN 100
-#define SAND_G_MAX 120
-#define SAND_B_MIN 100
-#define SAND_B_MAX 120
-
-#define TILE_R_MIN 200
-#define TILE_R_MAX 220
-#define TILE_G_MIN 200
-#define TILE_G_MAX 220
-#define TILE_B_MIN 200
-#define TILE_B_MAX 220
-
 Motor::Motor(uint16_t speed_pin, uint16_t forward_pin, uint16_t backward_pin)
 {
     speedPin = speed_pin;
@@ -116,14 +102,16 @@ unsigned long Encoder::getTicks()
     return encoderPosCount;
 }
 
-TOF::TOF(uint16_t lox_address, uint16_t shutdown_pin)
+TOF::TOF(uint16_t lox_address, uint16_t shutdown_pin, bool is_left = false)
 {
     loxAddress = lox_address;
     shutdownPin = shutdown_pin;
+    isLeft = is_left;
 }
 void TOF::init()
 {
-    if (!lox.begin(loxAddress)) {
+    Adafruit_VL53L0X::VL53L0X_Sense_config_t config = isLeft ? Adafruit_VL53L0X::VL53L0X_SENSE_HIGH_ACCURACY:Adafruit_VL53L0X::VL53L0X_SENSE_LONG_RANGE;
+    if (!lox.begin(loxAddress, false, &Wire, config)) {
         Serial.println(F("Failed to boot VL53L0X"));
         while (1);
     }
@@ -134,63 +122,16 @@ void TOF::init()
 
 int TOF::getDistance()
 {
-     // read sensor value
-    VL53L0X_RangingMeasurementData_t rangingMeasurementData;
-    lox.getSingleRangingMeasurement(&rangingMeasurementData);
-    // make sure reading is valid and less than 1m
-    if (rangingMeasurementData.RangeStatus != 4 && rangingMeasurementData.RangeMilliMeter < 1000) {
-        return rangingMeasurementData.RangeMilliMeter;
-    }
-    return -1;
-     // append to buffer
-     // average values using buffer
-     // update current reading based on filter
-}
-
-void setupTOF(TOF leftTOF) {
-    pinMode(leftTOF.shutdownPin, OUTPUT);    
-    // pinMode(frontTOF.shutdownPin, OUTPUT);
-    // pinMode(backTOF.shutdownPin, OUTPUT);
-    delay(10);
-    // all reset
-    digitalWrite(leftTOF.shutdownPin, LOW);    
-    // digitalWrite(frontTOF.shutdownPin, LOW);
-    // digitalWrite(backTOF.shutdownPin, LOW);
-    delay(10);
-
-    // all unreset
-    digitalWrite(leftTOF.shutdownPin, HIGH);    
-    // digitalWrite(frontTOF.shutdownPin, HIGH);
-    // digitalWrite(backTOF.shutdownPin, HIGH);
-    delay(10);
-
-    // activating leftTOF and resetting other two
-    digitalWrite(leftTOF.shutdownPin, HIGH);
-    // digitalWrite(frontTOF.shutdownPin, LOW);
-    // digitalWrite(backTOF.shutdownPin, LOW);
-
-    leftTOF.init();
-    delay(10);
-
-    // activating frontTOF
-    // digitalWrite(frontTOF.shutdownPin, HIGH);
-    // delay(10);
-
-    // frontTOF.init();
-    // delay(10);
-
-    // // activate backTOF
-    // digitalWrite(backTOF.shutdownPin, HIGH);
-    // delay(10);
-
-    // backTOF.init();
-    // delay(10);
+    uint16_t measure = lox.readRange();
+    // ignore greater than 1m for left sensor and 2m for front
+    uint16_t MAX_D = isLeft ? 1000 : 2000;
+    return measure > MAX_D ? -1 : measure;
 }
 
 void IMU::init()
 {
     if (!icm.begin_I2C()) {
-        Serial.println("Failed to find sensors");
+        Serial.println("Failed to find imu");
         while (1) delay(10);
     }
     icm.setAccelRange(ICM20948_ACCEL_RANGE_2_G);
@@ -589,124 +530,4 @@ void IMU::getYPR(float *y, float *p, float *r)
     *y = heading;
     *p = pitch;
     *r = roll;
-}
-
-ColorSensor::ColorSensor()
-{
-    enabled = true;
-}
-
-void ColorSensor::init()
-{
-    tcs = Adafruit_TCS34725(TCS34725_INTEGRATIONTIME_614MS, TCS34725_GAIN_1X);
-    if (tcs.begin()) {
-        Serial.println("Found color sensor");
-    } else {
-        Serial.println("No TCS34725 found ... check your connections");
-        while (1);
-    }
-}
-
-void ColorSensor::disable()
-{
-    if (enabled)
-        tcs.disable();
-    enabled = false;
-}
-
-void ColorSensor::enable()
-{
-    if (!enabled)
-        tcs.enable();
-    enabled = true;
-}
-
-bool ColorSensor::isSand()
-{
-    float r, g, b;
-    tcs.getRGB(&r, &g, &b);
-
-    if (r > SAND_R_MIN && r < SAND_R_MAX && g > SAND_G_MIN && g < SAND_G_MAX && b < SAND_B_MIN && b > SAND_B_MAX)
-    {
-        return true;
-    }
-    return false;
-}
-
-bool ColorSensor::isTile()
-{
-    float r, g, b;
-    tcs.getRGB(&r, &g, &b);
-
-    if (r > TILE_R_MIN && r < TILE_R_MAX && g > TILE_G_MIN && g < TILE_G_MAX && b < TILE_B_MIN && b > TILE_B_MAX)
-    {
-        return true;
-    }
-    return false;
-}
-
-LeftTOF::LeftTOF(uint16_t lox_address, uint16_t shutdown_pin)
-{
-    loxAddress = lox_address;
-    shutdownPin = shutdown_pin;
-}
-void LeftTOF::init()
-{
-    if (!lox.begin(loxAddress)) {
-        Serial.println(F("Failed to boot VL53L0X"));
-        while (1);
-    }
-#ifdef DEBUG_ON
-    Serial.println(F("Found VL53L0X"));
-#endif
-}
-
-int LeftTOF::getDistance()
-{
-     // read sensor value
-    VL53L0X_RangingMeasurementData_t rangingMeasurementData;
-    lox.getSingleRangingMeasurement(&rangingMeasurementData);
-    // make sure reading is valid and less than 1m
-    if (rangingMeasurementData.RangeStatus != 4 && rangingMeasurementData.RangeMilliMeter < 1000) {
-        return rangingMeasurementData.RangeMilliMeter;
-    }
-    return -1;
-     // append to buffer
-     // average values using buffer
-     // update current reading based on filter
-}
-
-void LeftTOF::addValue() {
-    // get left sensor reading 
-    double sensor_value = getDistance(); 
-    if(sensor_value == -1) return;
-
-    // add sensor reading to queue
-    while (buffer_.size() >= 10) {
-        buffer_.pop();
-    }
-    buffer_.push(sensor_value);
-}
-
-uint16_t LeftTOF::getValue() {
-    return buffer_.back();
-}
-
-void LeftTOF::clearValues() {
-    std::queue<uint16_t> empty;
-    std::swap(buffer_, empty);
-}
-
-bool LeftTOF::shouldAdjustRight() {
-    if (buffer_.size() < 4) {
-        return false;
-    }
-    return (buffer_.front() - buffer_.back() > 10);
-}
-
-bool LeftTOF::shouldAdjustLeft() {
-    if(buffer_.size() < 4) {
-        return false;
-    }
-    return (buffer_.back() - buffer_.front() > 10); 
 }

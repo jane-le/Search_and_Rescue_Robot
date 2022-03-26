@@ -2,7 +2,7 @@
 #define SENSORS_H
 
 #include "Arduino.h"
-#include "Adafruit_VL53L0X.h"
+#include <VL53L0X.h>
 #include <Adafruit_Sensor_Calibration.h>
 #include <Adafruit_AHRS.h>
 #include <Adafruit_ICM20X.h>
@@ -105,6 +105,7 @@ class TOF {
     
   private:
     Adafruit_VL53L0X lox;
+    bool isLeft;
     uint32_t buffer[10];
     int distance;
     uint16_t loxAddress;
