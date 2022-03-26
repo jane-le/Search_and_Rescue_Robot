@@ -2,7 +2,7 @@
 #define SENSORS_H
 
 #include "Arduino.h"
-#include <VL53L0X.h>
+#include "Adafruit_VL53L0X.h"
 #include <Adafruit_Sensor_Calibration.h>
 #include <Adafruit_AHRS.h>
 #include <Adafruit_ICM20X.h>
