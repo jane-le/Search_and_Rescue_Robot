@@ -5,31 +5,11 @@
 #define MAX_PWM 255
 #define DEBOUNCE_DELAY 50  // 50 ms (may need to change)
 
-// These are the free parameters in the Mahony filter and fusion scheme,
-// Kp for proportional feedback, Ki for integral
-// Kp is not yet optimized (slight overshoot apparent after rapid sensor reorientations). Ki is not used.
-#define Kp 50.0
-#define Ki 0.0
-
 // uncomment this for debugging
 //#define DEBUG_ON
 
 // uncomment this for calibration
 //#define CALIBRATE_IMU
-
-#define SAND_R_MIN 100
-#define SAND_R_MAX 120
-#define SAND_G_MIN 100
-#define SAND_G_MAX 120
-#define SAND_B_MIN 100
-#define SAND_B_MAX 120
-
-#define TILE_R_MIN 200
-#define TILE_R_MAX 220
-#define TILE_G_MIN 200
-#define TILE_G_MAX 220
-#define TILE_B_MIN 200
-#define TILE_B_MAX 220
 
 Motor::Motor(uint16_t speed_pin, uint16_t forward_pin, uint16_t backward_pin)
 {
@@ -123,7 +103,7 @@ TOF::TOF(uint16_t lox_address, uint16_t shutdown_pin)
 }
 void TOF::init()
 {
-    if (!lox.begin(loxAddress)) {
+    if (!lox.begin(loxAddress, false, &Wire, Adafruit_VL53L0X::VL53L0X_SENSE_LONG_RANGE)) {
         Serial.println(F("Failed to boot VL53L0X"));
         while (1);
     }
@@ -134,63 +114,14 @@ void TOF::init()
 
 int TOF::getDistance()
 {
-     // read sensor value
-    VL53L0X_RangingMeasurementData_t rangingMeasurementData;
-    lox.getSingleRangingMeasurement(&rangingMeasurementData);
-    // make sure reading is valid and less than 1m
-    if (rangingMeasurementData.RangeStatus != 4 && rangingMeasurementData.RangeMilliMeter < 1000) {
-        return rangingMeasurementData.RangeMilliMeter;
-    }
-    return -1;
-     // append to buffer
-     // average values using buffer
-     // update current reading based on filter
-}
-
-void setupTOF(TOF leftTOF) {
-    pinMode(leftTOF.shutdownPin, OUTPUT);    
-    // pinMode(frontTOF.shutdownPin, OUTPUT);
-    // pinMode(backTOF.shutdownPin, OUTPUT);
-    delay(10);
-    // all reset
-    digitalWrite(leftTOF.shutdownPin, LOW);    
-    // digitalWrite(frontTOF.shutdownPin, LOW);
-    // digitalWrite(backTOF.shutdownPin, LOW);
-    delay(10);
-
-    // all unreset
-    digitalWrite(leftTOF.shutdownPin, HIGH);    
-    // digitalWrite(frontTOF.shutdownPin, HIGH);
-    // digitalWrite(backTOF.shutdownPin, HIGH);
-    delay(10);
-
-    // activating leftTOF and resetting other two
-    digitalWrite(leftTOF.shutdownPin, HIGH);
-    // digitalWrite(frontTOF.shutdownPin, LOW);
-    // digitalWrite(backTOF.shutdownPin, LOW);
-
-    leftTOF.init();
-    delay(10);
-
-    // activating frontTOF
-    // digitalWrite(frontTOF.shutdownPin, HIGH);
-    // delay(10);
-
-    // frontTOF.init();
-    // delay(10);
-
-    // // activate backTOF
-    // digitalWrite(backTOF.shutdownPin, HIGH);
-    // delay(10);
-
-    // backTOF.init();
-    // delay(10);
+    uint16_t measure = lox.readRange();
+    return measure == 0xFFFF ? -1 : measure;
 }
 
 void IMU::init()
 {
     if (!icm.begin_I2C()) {
-        Serial.println("Failed to find sensors");
+        Serial.println("Failed to find imu");
         while (1) delay(10);
     }
     icm.setAccelRange(ICM20948_ACCEL_RANGE_2_G);
@@ -589,58 +520,4 @@ void IMU::getYPR(float *y, float *p, float *r)
     *y = heading;
     *p = pitch;
     *r = roll;
-}
-
-ColorSensor::ColorSensor()
-{
-    enabled = true;
-}
-
-void ColorSensor::init()
-{
-    tcs = Adafruit_TCS34725(TCS34725_INTEGRATIONTIME_614MS, TCS34725_GAIN_1X);
-    if (tcs.begin()) {
-        Serial.println("Found color sensor");
-    } else {
-        Serial.println("No TCS34725 found ... check your connections");
-        while (1);
-    }
-}
-
-void ColorSensor::disable()
-{
-    if (enabled)
-        tcs.disable();
-    enabled = false;
-}
-
-void ColorSensor::enable()
-{
-    if (!enabled)
-        tcs.enable();
-    enabled = true;
-}
-
-bool ColorSensor::isSand()
-{
-    float r, g, b;
-    tcs.getRGB(&r, &g, &b);
-
-    if (r > SAND_R_MIN && r < SAND_R_MAX && g > SAND_G_MIN && g < SAND_G_MAX && b < SAND_B_MIN && b > SAND_B_MAX)
-    {
-        return true;
-    }
-    return false;
-}
-
-bool ColorSensor::isTile()
-{
-    float r, g, b;
-    tcs.getRGB(&r, &g, &b);
-
-    if (r > TILE_R_MIN && r < TILE_R_MAX && g > TILE_G_MIN && g < TILE_G_MAX && b < TILE_B_MIN && b > TILE_B_MAX)
-    {
-        return true;
-    }
-    return false;
 }

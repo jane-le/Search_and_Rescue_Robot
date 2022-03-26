@@ -2,7 +2,6 @@
 #define SENSORS_H
 
 #include "Arduino.h"
-#include "Adafruit_TCS34725.h"
 #include "Adafruit_VL53L0X.h"
 #include <Adafruit_Sensor_Calibration.h>
 #include <Adafruit_AHRS.h>
@@ -110,22 +109,6 @@ class TOF {
     int distance;
     uint16_t loxAddress;
 };
-
-// functions for colour sensor
-class ColorSensor {
-  public:
-    ColorSensor();
-    void init();
-    void enable();
-    void disable();
-    bool isSand();
-    bool isTile();
-  private:
-    Adafruit_TCS34725 tcs;
-    bool enabled;
-};
-
-void setupTOF(TOF leftTOF);
 
 class LeftTOF {
 	public:
