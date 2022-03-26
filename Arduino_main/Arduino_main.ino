@@ -1,5 +1,3 @@
-
-
 #if ARDUINO >= 100
 #include "Arduino.h"
 #else
@@ -13,8 +11,8 @@
 #include <map>
 
 // Digital pins connected to TOF sensors
-#define SHT_LOX1 23
-#define SHT_LOX2 25
+#define SHT_LOX1 25
+#define SHT_LOX2 27
 
 // I2C addressing of TOF sensors
 #define LOX1_ADDRESS 0x30
@@ -35,6 +33,7 @@ typedef enum {
   TURN_RIGHT,
   LEFT_ADJUST,
   RIGHT_ADJUST,
+  TURN_ADJUST,
   STOP
 } robot_state_t;
 
@@ -86,8 +85,8 @@ const int LEFT_ADJUST_ANGLE_TOL = 10;
 Motor left_motor(L_MOTOR_PWM, L_MOTOR_PIN1, L_MOTOR_PIN2);
 Motor right_motor(R_MOTOR_PWM, R_MOTOR_PIN1, R_MOTOR_PIN2);
 
-TOF front_tof(LOX2_ADDRESS, SHT_LOX2);
-TOF left_tof(LOX1_ADDRESS, SHT_LOX1); 
+TOF front_tof(LOX2_ADDRESS, SHT_LOX2, false);
+TOF left_tof(LOX1_ADDRESS, SHT_LOX1, true); 
 
 IMU imu;
 
@@ -204,7 +203,7 @@ void updateCurrentTile(const std::pair<double, double>& position, const int next
             double ij_center_y = ij_coord.second;
             
             if (position_x <= ij_center_x + TILE_WIDTH / 2.0 && position_x > ij_center_x - TILE_WIDTH / 2.0
-                && position_y <= ij_center_y + TILE_WIDTH / 2.0 && position_y > ij_center_y - TILE_WIDTH / 2.0) {
+                || position_y <= ij_center_y + TILE_WIDTH / 2.0 && position_y > ij_center_y - TILE_WIDTH / 2.0) {
                   Serial.println("FOUND");
                   Serial.println(ij_coord.first);
                   Serial.println(ij_coord.second);
@@ -398,8 +397,10 @@ void handleTurnRight() {
   }
 
   des_left_offset = getDesLeftDist();
-  setState(TILE_FORWARD);
   last_turned_tile = current_tile;
+
+    
+  setState(TURN_ADJUST);
 }
 
 void handleLeftAdjust() {
@@ -449,6 +450,33 @@ void handleRightAdjust() {
     if(abs(imu.getHeading() - heading_offset) < 10 || abs(left_tof.getDistance()-des_left_offset) < LEFT_DIST_TOL) {
       setState(TILE_FORWARD);
     }
+}
+
+void handleTurnAdjust() {
+  int heading_err = imu.getHeading() - heading_offset; 
+
+
+  // adjust left
+  if(heading_err > 0) {
+      while(abs(left_tof.getDistance() - des_left_offset) > 30 || abs(imu.getHeading() - heading_offset) < 10) {
+        left_motor_power = TURN_MOTOR_VALUE;
+        right_motor_power = TURN_MOTOR_VALUE;
+        left_motor.forward(left_motor_power);
+        right_motor.backward(right_motor_power);
+      }
+  } else {
+      while(abs(left_tof.getDistance() - des_left_offset) > 30 ||  abs(imu.getHeading() - heading_offset) < 10 ) {
+        left_motor_power = TURN_MOTOR_VALUE;
+        right_motor_power = TURN_MOTOR_VALUE;
+        left_motor.backward(left_motor_power);
+        right_motor.forward(right_motor_power);
+      } 
+  }
+
+  setState(TILE_FORWARD); 
+  return;
+
+    
 }
 
 void handleStop() {
@@ -542,6 +570,8 @@ void setup() {
 }
 
 void loop() {
+
+  imu.updateIMU();
   Serial.print("Current Tile ");
   Serial.print(current_tile);
 
@@ -553,14 +583,21 @@ void loop() {
   Serial.print(robot_position.second); 
   Serial.println(" "); 
 
-
   Serial.println(" ");
   Serial.print("Expected left dist: ");
   Serial.print(des_left_offset);
   Serial.println(" ");
-  
 
-  imu.updateIMU();
+  Serial.println(" ");
+  Serial.print("IMU Heading: "); 
+  Serial.print(imu.getHeading()); 
+  Serial.println(" ");
+
+  Serial.println(" ");
+  Serial.print("IMU offset: "); 
+  Serial.print(heading_offset); 
+  Serial.println(" ");
+
   
   // calculate position and localize (match with map)
   calculatePosition(current_orientation, robot_position);
@@ -591,6 +628,9 @@ void loop() {
       break;
     case RIGHT_ADJUST:
      handleRightAdjust();
+     break;
+    case TURN_ADJUST: 
+     handleTurnAdjust(); 
      break;
     case STOP:
      handleStop();
