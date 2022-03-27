@@ -72,7 +72,7 @@ const double CENTER_TILE_TOL = 10;
 
 const double PITCH_UPWARDS_VALUE = 40;
 const double PITCH_DOWNWARDS_VALUE = -40;
-const double ADJUST_VALUE = 10;
+const double ADJUST_VALUE = 5;
 
 const int RIGHT_ADJUST_DIST_TOL = 10;
 const int RIGHT_ADJUST_ANGLE_TOL = 10;
@@ -174,6 +174,11 @@ void updateCurrentTile(const std::pair<double, double>& position, const int next
     return;
   }
 */
+
+  // front tof too unreliable long range 
+  if((shouldAdjustRight || shouldAdjustLeft) && front_tof.getDistance() > 1000) {
+    return;  
+  }
   if(left_tof.getDistance() == -1 || front_tof.getDistance() == -1) {
     return;
   }
@@ -200,20 +205,20 @@ void updateCurrentTile(const std::pair<double, double>& position, const int next
   int front_tof_value = front_tof.getDistance();
   switch (current_orientation) {
     case LEFT:
-      position.first = des_left_dist + ROBOT_WIDTH / 2.0;
-      position.second = front_tof_value + ROBOT_LENGTH / 2.0;
+      curr_x = des_left_offset + ROBOT_WIDTH / 2.0;
+      curr_y = front_tof_value + ROBOT_LENGTH / 2.0;
       break;
     case RIGHT:
-      position.first = WIDTH - des_left_dist - ROBOT_WIDTH / 2.0;
-      position.second = WIDTH - front_tof_value - ROBOT_LENGTH / 2.0; 
+      curr_x = WIDTH - des_left_offset - ROBOT_WIDTH / 2.0;
+      curr_y = WIDTH - front_tof_value - ROBOT_LENGTH / 2.0; 
       break;
     case TOP:
-      position.first = WIDTH - front_tof_value - ROBOT_LENGTH / 2.0; 
-      position.second = des_left_dist + ROBOT_WIDTH / 2.0;
+      curr_x = WIDTH - front_tof_value - ROBOT_LENGTH / 2.0; 
+      curr_y = des_left_offset + ROBOT_WIDTH / 2.0;
       break;
     case BOTTOM:
-      position.first = front_tof_value + ROBOT_LENGTH / 2.0; 
-      position.second = WIDTH - des_left_dist - ROBOT_WIDTH / 2.0;
+      curr_x = front_tof_value + ROBOT_LENGTH / 2.0; 
+      curr_y = WIDTH - des_left_offset - ROBOT_WIDTH / 2.0;
       break;
   }
   
@@ -230,7 +235,7 @@ void updateCurrentTile(const std::pair<double, double>& position, const int next
             double ij_center_y = ij_coord.second;
             
             if (curr_x <= ij_center_x + TILE_WIDTH / 2.0 && curr_x > ij_center_x - TILE_WIDTH / 2.0
-                || curr_y <= ij_center_y + TILE_WIDTH / 2.0 && curr_y > ij_center_y - TILE_WIDTH / 2.0) {
+                && curr_y <= ij_center_y + TILE_WIDTH / 2.0 && curr_y > ij_center_y - TILE_WIDTH / 2.0) {
                 // iterate through path to get current_tile
                 for(int k = 0; k < path.size(); k++) {
                   if(path[k].first == i && path[k].second == j) {
@@ -428,6 +433,8 @@ void handleTurnRight() {
 
   heading_offset =  heading_offset - 90 < 0 ? heading_offset - 90 + 360 : heading_offset - 90; 
   setState(TILE_FORWARD);
+
+  delay(1000);
 }
 
 void handleLeftAdjust() {
