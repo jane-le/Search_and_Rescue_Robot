@@ -54,7 +54,6 @@ const double WIDTH = 1800;
 const double TILE_WIDTH = 300;
 int left_motor_power = 0;
 int right_motor_power = 0;
-int last_turned_tile = -1; 
 
 const int PIT_MOTOR_LOW = 40;
 const int PIT_MOTOR_MED = 50;
@@ -74,7 +73,7 @@ const double CENTER_TILE_TOL = 10;
 
 const double PITCH_UPWARDS_VALUE = 40;
 const double PITCH_DOWNWARDS_VALUE = -40;
-const double ADJUST_VALUE = 5;
+const double ADJUST_VALUE = 10;
 
 const int RIGHT_ADJUST_DIST_TOL = -10;
 const int RIGHT_ADJUST_ANGLE_TOL = 10;
@@ -101,6 +100,13 @@ std::map<std::pair<int, int>, char> course = {
   {{4, 5}, 'T'}, {{4, 1}, 'T'}, {{1, 1}, 'T'}, {{1, 4}, 'T'},
   {{3, 4}, 'T'}, {{3, 2}, 'T'}, {{2, 2}, 'T'}, {{2, 3}, 'E'}
 };
+
+std::map<std::pair<int, int>, robot_orientation> turn_orientation = {
+  {{5, 0}, BOTTOM}, {{0, 0}, LEFT}, {{0, 5}, TOP},
+  {{4, 5}, RIGHT}, {{4, 1}, BOTTOM}, {{1, 1}, LEFT}, {{1, 4}, TOP},
+  {{3, 4}, RIGHT}, {{3, 2}, BOTTOM}, {{2, 2}, TOP}
+};
+
 
 // F = front tof, B = back tof, x and y in mm, based on 1.8 m
 std::vector<std::vector<std::pair<int, int>>> coords = {
@@ -192,7 +198,7 @@ void updateCurrentTile(const std::pair<double, double>& position, const int next
 
   if (position_x > curr_center_x + TILE_WIDTH / 2.0 || position_x < curr_center_x - TILE_WIDTH / 2.0
       || position_y > curr_center_y + TILE_WIDTH / 2.0 || position_y < curr_center_y - TILE_WIDTH / 2.0) {
-        Serial.println("FIND WHERE WE ARE");
+        Serial.println("FIND WHERE WE ARE..");
     
     // iterate through coords and find the tile we're on 
     for(int i = 0; i < 6; i++) {
@@ -204,15 +210,13 @@ void updateCurrentTile(const std::pair<double, double>& position, const int next
             
             if (position_x <= ij_center_x + TILE_WIDTH / 2.0 && position_x > ij_center_x - TILE_WIDTH / 2.0
                 || position_y <= ij_center_y + TILE_WIDTH / 2.0 && position_y > ij_center_y - TILE_WIDTH / 2.0) {
-                  Serial.println("FOUND");
-                  Serial.println(ij_coord.first);
-                  Serial.println(ij_coord.second);
                 // iterate through path to get current_tile
                 for(int k = 0; k < path.size(); k++) {
                   if(path[k].first == i && path[k].second == j) {
                       current_tile = k; 
-                      Serial.println("FOUND");
-                      Serial.println(current_tile);
+                      Serial.print("..FOUND where we are..");
+                      Serial.print(current_tile);
+                      Serial.println(" ");
                       return;
                   }
                 }
@@ -253,12 +257,12 @@ void handleInit() {
 
 bool shouldAdjustRight() {
   int left_tof_value = left_tof.getDistance();
-  return ((left_tof_value < des_left_offset && abs(left_tof_value-des_left_offset) > LEFT_DIST_ADJUST_TOL) ||(imu.getHeading() - heading_offset) > RIGHT_ADJUST_ANGLE_TOL);
+  return (left_tof_value < des_left_offset && abs(left_tof_value-des_left_offset) > LEFT_DIST_ADJUST_TOL);
 }
 
 bool shouldAdjustLeft() {
   int left_tof_value = left_tof.getDistance();
-  return ((left_tof_value > des_left_offset && abs(left_tof_value-des_left_offset) > LEFT_DIST_ADJUST_TOL) || (heading_offset - imu.getHeading()) > LEFT_ADJUST_ANGLE_TOL );
+  return (left_tof_value > des_left_offset && abs(left_tof_value-des_left_offset) > LEFT_DIST_ADJUST_TOL);
 }
 
 void handleTileForward() {
@@ -273,9 +277,12 @@ void handleTileForward() {
   if (it != course.end()) {
     char landmark = it->second;
 
-    if (landmark == 'T' && last_turned_tile != current_tile) {
-      setState(TURN_RIGHT);
-      return;
+    if (landmark == 'T') {
+      std::map<std::pair<int, int>, robot_orientation>::iterator it_turn = turn_orientation.find(path[current_tile]);
+      if(it_turn != turn_orientation.end() && it_turn->second == current_orientation) {
+          setState(TURN_RIGHT);
+          return;
+      }
     } else if (landmark == 'E') {
       setState(STOP);
       return;
@@ -351,7 +358,7 @@ void handleTurnRight() {
 
   // is our front_tof value in the middle of the tile ? if not return; 
   std::pair<int, int> coord = coords[path[current_tile].first][path[current_tile].second];
-  double front_dist_tolerance = 100;
+  double front_dist_tolerance = 120;
     switch (current_orientation) {
     case LEFT:
       if(robot_position.second > coord.second + front_dist_tolerance) return; 
@@ -364,18 +371,19 @@ void handleTurnRight() {
   }  
   
   // turn !! 
-  heading_offset =  heading_offset - 90 < 0 ? heading_offset - 90 + 360 : heading_offset - 90; 
-  int target_heading = heading_offset; 
+  double curr_heading = imu.getHeading();
+  double target_heading = curr_heading - 90 < 0 ? curr_heading - 90 + 360 : curr_heading - 90; 
 
   left_motor.stop();
   right_motor.stop();
   
-  while (abs(imu.getHeading() - target_heading) > 5) {
+  while (abs(imu.getHeading() - target_heading) > 10) {
     imu.updateIMU();
     left_motor_power = TURN_MOTOR_VALUE;
     right_motor_power = TURN_MOTOR_VALUE;
     left_motor.backward(left_motor_power);
     right_motor.forward(right_motor_power);
+    Serial.println(abs(imu.getHeading() - target_heading));
   }
 
   left_motor.stop();
@@ -397,25 +405,34 @@ void handleTurnRight() {
   }
 
   des_left_offset = getDesLeftDist();
-  last_turned_tile = current_tile;
 
-    
-  setState(TURN_ADJUST);
+  heading_offset =  heading_offset - 90 < 0 ? heading_offset - 90 + 360 : heading_offset - 90; 
+  setState(TILE_FORWARD);
 }
 
 void handleLeftAdjust() {
+    
+    if (abs(imu.getPitch() - pitch_offset) > PITCH_UPWARDS_VALUE) {
+      setState(PIT_FORWARD);
+      return;
+    }
     std::map<std::pair<int, int>, char>::iterator it = course.find(path[current_tile]);
     if (it != course.end()) {
       char landmark = it->second;
   
-      if (landmark == 'T' && last_turned_tile != current_tile) {
-        setState(TURN_RIGHT);
-        return;
+      if (landmark == 'T') {
+        std::map<std::pair<int, int>, robot_orientation>::iterator it_turn = turn_orientation.find(path[current_tile]);
+        if(it_turn != turn_orientation.end() && it_turn->second == current_orientation) {
+            setState(TURN_RIGHT);
+            return;
+        }
       } else if (landmark == 'E') {
         setState(STOP);
         return;
       }
     }
+    
+
   
     Serial.println("handleLeftAdjust");
     right_motor_power = ADJUST_VALUE + TILE_ADJUST_VALUE;
@@ -429,18 +446,29 @@ void handleLeftAdjust() {
 }
 
 void handleRightAdjust() {
+    
+    if (abs(imu.getPitch() - pitch_offset) > PITCH_UPWARDS_VALUE) {
+      setState(PIT_FORWARD);
+      return;
+    }
+
     std::map<std::pair<int, int>, char>::iterator it = course.find(path[current_tile]);
     if (it != course.end()) {
       char landmark = it->second;
   
-      if (landmark == 'T' && last_turned_tile != current_tile) {
-        setState(TURN_RIGHT);
-        return;
+      if (landmark == 'T') {
+        std::map<std::pair<int, int>, robot_orientation>::iterator it_turn = turn_orientation.find(path[current_tile]);
+        if(it_turn != turn_orientation.end() && it_turn->second == current_orientation) {
+            setState(TURN_RIGHT);
+            return;
+        }
       } else if (landmark == 'E') {
         setState(STOP);
         return;
       }
     }
+  
+
     Serial.println("handleRightAdjust");
     left_motor_power = ADJUST_VALUE + TILE_ADJUST_VALUE;
     right_motor_power = TILE_ADJUST_VALUE;
@@ -539,7 +567,7 @@ void setup() {
   left_tof.init();
 
   delay(10);
-  Serial.println(F("Set up  Left TOF"));
+  Serial.println(F("Set up Left TOF"));
 
   digitalWrite(front_tof.shutdownPin, HIGH);
   front_tof.init();
@@ -582,20 +610,21 @@ void loop() {
   Serial.print("   "); 
   Serial.print(robot_position.second); 
   Serial.println(" "); 
-
-  Serial.println(" ");
+  
   Serial.print("Expected left dist: ");
   Serial.print(des_left_offset);
   Serial.println(" ");
 
-  Serial.println(" ");
   Serial.print("IMU Heading: "); 
   Serial.print(imu.getHeading()); 
   Serial.println(" ");
 
-  Serial.println(" ");
-  Serial.print("IMU offset: "); 
+  Serial.print("IMU heading offset: "); 
   Serial.print(heading_offset); 
+  Serial.println(" ");
+
+  Serial.print("IMU pitch offset: "); 
+  Serial.print(pitch_offset); 
   Serial.println(" ");
 
   
