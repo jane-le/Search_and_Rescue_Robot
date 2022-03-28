@@ -15,8 +15,8 @@ class Motor {
   public:
     Motor(uint16_t speed_pin, uint16_t forward_pin, uint16_t backward_pin);
     void init();
-    void forward(uint16_t pwm_signal = 100);
-    void backward(uint16_t pwm_signal = 100);
+    void forward(uint16_t pwm_signal);
+    void backward(uint16_t pwm_signal);
     void stop();
 
 
@@ -55,7 +55,7 @@ class IMU {
     IMU() {}
     void init();
     // need to define CALIBRATE_IMU to use this function
-    void calibrate(float* mag_hardiron, float* mag_softiron, float mag_field, int num_points = 300);
+    void calibrate(float* mag_hardiron, float* mag_softiron, float mag_field, int num_points);
 
     // this function should get called on every loop to update the IMU measurement
     void update();
@@ -98,7 +98,7 @@ class IMU {
 // functions for TOF sensor
 class TOF {
   public:
-    TOF(uint16_t lox_address, uint16_t shutdown_pin, bool is_left = false);
+    TOF(uint16_t lox_address, uint16_t shutdown_pin, bool is_left);
     void init();
     int getDistance();
     uint16_t shutdownPin;
