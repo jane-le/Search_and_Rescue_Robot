@@ -60,19 +60,19 @@ const int PIT_MOTOR_HIGH = 60;
 const int PIT_INCREMENT = 2; 
 const int TILE_MOTOR_VALUE = 50;
 const int TURN_MOTOR_VALUE = 50;
-const int SLOW_MOTOR_VALUE = 30;
+const int SLOW_MOTOR_VALUE = 40;
 const int TILE_ADJUST_VALUE = 50;
 
 const int ROBOT_WIDTH = 150;
 const int ROBOT_LENGTH = 190;
 const int LEFT_DIST_TOL = 20;
-const int LEFT_DIST_ADJUST_TOL = 40;
+const int LEFT_DIST_ADJUST_TOL = 25;
 
 const double CENTER_TILE_TOL = 10;
 
 const double PITCH_UPWARDS_VALUE = 60;
 const double PITCH_DOWNWARDS_VALUE = -60;
-const double ADJUST_VALUE = 5;
+const double ADJUST_VALUE = 10;
 
 const int RIGHT_ADJUST_DIST_TOL = 10;
 const int RIGHT_ADJUST_ANGLE_TOL = 10;
@@ -89,8 +89,8 @@ TOF left_tof(LOX1_ADDRESS, SHT_LOX1, true);
 IMU imu;
 
 int curr_turn = 0;
-int heading_offset = 0; 
-int pitch_offset = 0; 
+float heading_offset = 0; 
+float pitch_offset = 0; 
 int des_left_offset = 0;
 
 // S = start, E = end, T = turn
@@ -280,7 +280,11 @@ int getDesLeftDist() {
 void handleInit() {
   Serial.println("HandleInit");
   delay(5000);
-  imu.updateIMU();
+  int start = micros();
+  while(micros() - start < 5e6) {
+    imu.updateIMU();
+  }
+
   heading_offset = imu.getHeading(); 
   pitch_offset = imu.getPitch(); 
   des_left_offset = getDesLeftDist(); 
@@ -294,9 +298,11 @@ bool shouldAdjustRight() {
   if(left_tof_value == -1) {
     return false;
   }
+
+  double curr_heading = imu.getHeading(); 
   
-  int dist_to_left_wall = left_tof_value * cos(abs(imu.getHeading() - heading_offset));
-  return ((dist_to_left_wall < des_left_offset && abs(dist_to_left_wall-des_left_offset) > LEFT_DIST_ADJUST_TOL) || (imu.getHeading() - heading_offset) > RIGHT_ADJUST_ANGLE_TOL);
+  int dist_to_left_wall = left_tof_value * cos(abs(curr_heading- heading_offset) * PI / 180);
+  return ((dist_to_left_wall < des_left_offset && abs(dist_to_left_wall-des_left_offset) > LEFT_DIST_ADJUST_TOL) || (curr_heading - heading_offset) > RIGHT_ADJUST_ANGLE_TOL);
 }
 
 bool shouldAdjustLeft() {
@@ -305,8 +311,10 @@ bool shouldAdjustLeft() {
   if(left_tof_value == -1) {
     return false;
   }
+
+  double curr_heading = imu.getHeading(); 
   
-  int dist_to_left_wall = left_tof_value * cos(abs(imu.getHeading() - heading_offset));
+  int dist_to_left_wall = left_tof_value * cos(abs(imu.getHeading() - heading_offset) * PI / 180);
   return ((dist_to_left_wall > des_left_offset && abs(dist_to_left_wall-des_left_offset) > LEFT_DIST_ADJUST_TOL) || (imu.getHeading() - heading_offset) < LEFT_ADJUST_ANGLE_TOL );
 }
 void handleTileForward() {
@@ -415,6 +423,7 @@ void handleTurnRight() {
   }  
   
   // turn !! 
+  
   double curr_heading = imu.getHeading();
   double target_heading = curr_heading - 90 < 0 ? curr_heading - 90 + 360 : curr_heading - 90; 
 
@@ -487,7 +496,7 @@ void handleLeftAdjust() {
     left_motor.backward(left_motor_power);
     right_motor.backward(right_motor_power);
 
-    if(abs(imu.getHeading() - heading_offset) < 10 || !shouldAdjustLeft) {
+    if(!shouldAdjustLeft()) {
       setState(TILE_FORWARD);
     }
 }
@@ -522,7 +531,7 @@ void handleRightAdjust() {
     left_motor.backward(left_motor_power);
     right_motor.backward(right_motor_power);
 
-    if(abs(imu.getHeading() - heading_offset) < 10 || !shouldAdjustRight) {
+    if(!shouldAdjustRight()) {
       setState(TILE_FORWARD);
     }
 }
