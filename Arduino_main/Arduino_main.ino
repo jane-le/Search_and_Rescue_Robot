@@ -58,10 +58,10 @@ const int PIT_MOTOR_LOW = 40;
 const int PIT_MOTOR_MED = 50;
 const int PIT_MOTOR_HIGH = 60;
 const int PIT_INCREMENT = 2; 
-const int TILE_MOTOR_VALUE = 50;
+const int TILE_MOTOR_VALUE = 60;
 const int TURN_MOTOR_VALUE = 50;
 const int SLOW_MOTOR_VALUE = 40;
-const int TILE_ADJUST_VALUE = 50;
+const int TILE_ADJUST_VALUE = 60;
 
 const int ROBOT_WIDTH = 150;
 const int ROBOT_LENGTH = 190;
@@ -72,7 +72,7 @@ const double CENTER_TILE_TOL = 10;
 
 const double PITCH_UPWARDS_VALUE = 60;
 const double PITCH_DOWNWARDS_VALUE = -60;
-const double ADJUST_VALUE = 10;
+const double ADJUST_VALUE = 25;
 
 const int RIGHT_ADJUST_DIST_TOL = 10;
 const int RIGHT_ADJUST_ANGLE_TOL = 10;
@@ -92,6 +92,10 @@ int curr_turn = 0;
 float heading_offset = 0; 
 float pitch_offset = 0; 
 int des_left_offset = 0;
+
+int last_tof_time = 0;
+int prev_tof_value = 0;
+float roc = 0;
 
 // S = start, E = end, T = turn
 std::map<std::pair<int, int>, char> course = {
@@ -175,6 +179,14 @@ void calculatePosition(robot_orientation current_orientation, std::pair<double, 
   }  
 }
 
+
+float getRateOfChange(int first, int last) {
+
+  int dt = (micros() - last_tof_time) * 1e-6;
+  last_tof_time = micros();
+
+  return (last - first) / dt;  
+}
 void updateCurrentTile(const std::pair<double, double>& position, const int next_tile, int& current_tile) {
   /*
   if(abs(imu.getPitch() - pitch_offset) > 40) {
@@ -189,10 +201,6 @@ void updateCurrentTile(const std::pair<double, double>& position, const int next
   if(left_tof.getDistance() == -1 || front_tof.getDistance() == -1) {
     return;
   } */
-  int front_tof_value = front_tof.getDistance();
-  if(left_tof.getDistance() == -1 || front_tof_value == -1) {
-    return;
-  }
   
   std::pair<int, int> coord = coords[path[next_tile].first][path[next_tile].second];
   double next_center_x = coord.first;
@@ -206,6 +214,11 @@ void updateCurrentTile(const std::pair<double, double>& position, const int next
     current_tile = next_tile;
     return;
   } 
+
+  int front_tof_value = front_tof.getDistance();
+  if(left_tof.getDistance() == -1 || front_tof_value == -1) {
+    return;
+  }
   
   // check if we're not in the current tile and if we're not, where the hell are we?
   std::pair<int, int> curr_coord = coords[path[current_tile].first][path[current_tile].second];
@@ -291,9 +304,40 @@ void handleInit() {
 
   heading_offset = imu.getHeading(); 
   pitch_offset = imu.getPitch(); 
-  des_left_offset = getDesLeftDist(); 
+  des_left_offset = getDesLeftDist();
+  last_tof_time = micros();
+  prev_tof_value = left_tof.getDistance();
   
   setState(TILE_FORWARD);
+}
+char shouldAdjust() {
+    int left_tof_value = left_tof.getDistance(); 
+  
+  if(left_tof_value == -1) {
+    return false;
+  }
+  
+  double curr_heading = imu.getHeading(); 
+  double dist_to_left_wall = left_tof_value * cos(abs(curr_heading- heading_offset) * PI / 180.0);
+
+  if(roc < 0 && dist_to_left_wall < des_left_offset && abs(dist_to_left_wall-des_left_offset) > LEFT_DIST_ADJUST_TOL) {
+    return 'R';  
+  }
+  
+  if (roc < 0 && dist_to_left_wall > des_left_offset && abs(dist_to_left_wall-des_left_offset) > LEFT_DIST_ADJUST_TOL) {
+    return 'L'; 
+  }
+
+  if(roc > 0 && dist_to_left_wall < des_left_offset && abs(dist_to_left_wall-des_left_offset) > LEFT_DIST_ADJUST_TOL) {
+    return 'R'; 
+  }
+
+  if(roc > 0 && dist_to_left_wall > des_left_offset && abs(dist_to_left_wall-des_left_offset) > LEFT_DIST_ADJUST_TOL) {
+    return 'L'; 
+  }
+  
+  return 'N'; 
+  
 }
 
 bool shouldAdjustRight() {
@@ -302,11 +346,12 @@ bool shouldAdjustRight() {
   if(left_tof_value == -1) {
     return false;
   }
-
+  
   double curr_heading = imu.getHeading(); 
   
-  int dist_to_left_wall = left_tof_value * cos(abs(curr_heading- heading_offset) * PI / 180);
-  return ((dist_to_left_wall < des_left_offset && abs(dist_to_left_wall-des_left_offset) > LEFT_DIST_ADJUST_TOL) || (curr_heading - heading_offset) > RIGHT_ADJUST_ANGLE_TOL);
+  double dist_to_left_wall = left_tof_value * cos(abs(curr_heading- heading_offset) * PI / 180.0);
+  //return ((dist_to_left_wall < des_left_offset && abs(dist_to_left_wall-des_left_offset) > LEFT_DIST_ADJUST_TOL) || (curr_heading - heading_offset) > RIGHT_ADJUST_ANGLE_TOL);
+  return (dist_to_left_wall < des_left_offset && abs(dist_to_left_wall-des_left_offset) > LEFT_DIST_ADJUST_TOL) || roc < 0;
 }
 
 bool shouldAdjustLeft() {
@@ -318,8 +363,9 @@ bool shouldAdjustLeft() {
 
   double curr_heading = imu.getHeading(); 
   
-  int dist_to_left_wall = left_tof_value * cos(abs(curr_heading - heading_offset) * PI / 180);
-  return ((dist_to_left_wall > des_left_offset && abs(dist_to_left_wall-des_left_offset) > LEFT_DIST_ADJUST_TOL) || (imu.getHeading() - heading_offset) < LEFT_ADJUST_ANGLE_TOL );
+  double dist_to_left_wall = left_tof_value * cos(abs(curr_heading - heading_offset) * PI / 180.0);
+  //return ((dist_to_left_wall > des_left_offset && abs(dist_to_left_wall-des_left_offset) > LEFT_DIST_ADJUST_TOL) || (imu.getHeading() - heading_offset) < LEFT_ADJUST_ANGLE_TOL );
+  return (dist_to_left_wall > des_left_offset && abs(dist_to_left_wall-des_left_offset) > LEFT_DIST_ADJUST_TOL) || roc > 0;
 }
 void handleTileForward() {
   Serial.println("HandleTileForward");
@@ -344,17 +390,16 @@ void handleTileForward() {
       return;
     }
   }
+  /*
+  char adjust_direction = shouldAdjust(); 
   
-
-  if(shouldAdjustRight()) {
-    setState(RIGHT_ADJUST);
-    return;
-  }
-
-  if(shouldAdjustLeft()) {
+  if(adjust_direction == 'L') {
     setState(LEFT_ADJUST);
     return;
-  }
+   } else if (adjust_direction == 'R') {
+    setState(RIGHT_ADJUST);
+    return;
+   }*/
 
   left_motor_power = TILE_MOTOR_VALUE;
   right_motor_power = TILE_MOTOR_VALUE;
@@ -415,12 +460,12 @@ void handleTurnRight() {
   // is our front_tof value in the middle of the tile ? if not return; 
   std::pair<int, int> coord = coords[path[current_tile].first][path[current_tile].second];
   
-  double front_dist_tolerance = 100;
+  /*double front_dist_tolerance = 120; 
   int front_tof_value = front_tof.getDistance();
 
   if(front_tof_value == -1) {
     return;
-  }  
+  }  */
   std::map<std::pair<int, int>, char>::iterator it = course.find(path[current_tile]);
   if (it != course.end()) {
     char landmark = it->second;
@@ -430,17 +475,17 @@ void handleTurnRight() {
       return;
     }
   }
-   
-  switch (current_orientation) {
+  double front_dist_tolerance = 150;
+    switch (current_orientation) {
     case LEFT:
-      if(front_tof_value > coord.second + front_dist_tolerance) return; 
+      if(robot_position.second > coord.second + front_dist_tolerance) return; 
     case RIGHT:
-      if(front_tof_value < coord.second - front_dist_tolerance) return;
+      if(robot_position.second < coord.second - front_dist_tolerance) return;
     case TOP:
-      if(front_tof_value < coord.first - front_dist_tolerance) return;
+      if(robot_position.first < coord.first - front_dist_tolerance) return;
     case BOTTOM:
-      if(front_tof_value > coord.first + front_dist_tolerance) return;
-  }  
+      if(robot_position.first > coord.first + front_dist_tolerance) return;
+  } 
   
   // turn !! 
   
@@ -450,7 +495,7 @@ void handleTurnRight() {
   left_motor.stop();
   right_motor.stop();
   
-  while (abs(imu.getHeading() - target_heading) > 15) {
+  while (abs(imu.getHeading() - target_heading) > 10) {
     imu.updateIMU();
     left_motor_power = TURN_MOTOR_VALUE;
     right_motor_power = TURN_MOTOR_VALUE;
@@ -665,6 +710,17 @@ void loop() {
 
   
   }
+  if(robot_state != TURN_RIGHT) {
+    int left_tof_value = left_tof.getDistance(); 
+
+    if(left_tof_value == -1) {
+      roc = 0;
+    } else {
+      roc = getRateOfChange(left_tof_value, prev_tof_value);
+      prev_tof_value = left_tof_value;  
+    }
+  }
+  
   // calculate position and localize (match with map)
   calculatePosition(current_orientation, robot_position);
   int next_tile = current_tile + 1;
