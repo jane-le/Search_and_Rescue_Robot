@@ -450,7 +450,7 @@ void handleTurnRight() {
   left_motor.stop();
   right_motor.stop();
   
-  while (abs(imu.getHeading() - target_heading) > 10) {
+  while (abs(imu.getHeading() - target_heading) > 15) {
     imu.updateIMU();
     left_motor_power = TURN_MOTOR_VALUE;
     right_motor_power = TURN_MOTOR_VALUE;
@@ -480,13 +480,7 @@ void handleTurnRight() {
   des_left_offset = getDesLeftDist();
   curr_turn = curr_turn + 1;
 
-  float expected_heading = heading_offset - 90 < 0 ? heading_offset - 90 + 360 : heading_offset - 90; 
-  float err_heading = min(abs(x-y), 360 - abs(x-y));
-
-  
-
-  heading_offset = expected_heading;
-  
+  heading_offset = heading_offset - 90 < 0 ? heading_offset - 90 + 360 : heading_offset - 90; 
   setState(TILE_FORWARD);
 
   delay(50);
