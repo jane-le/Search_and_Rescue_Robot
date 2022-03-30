@@ -390,7 +390,7 @@ void handleTileForward() {
       return;
     }
   }
-  /*
+  
   char adjust_direction = shouldAdjust(); 
   
   if(adjust_direction == 'L') {
@@ -399,7 +399,7 @@ void handleTileForward() {
    } else if (adjust_direction == 'R') {
     setState(RIGHT_ADJUST);
     return;
-   }*/
+   }
 
   left_motor_power = TILE_MOTOR_VALUE;
   right_motor_power = TILE_MOTOR_VALUE;
