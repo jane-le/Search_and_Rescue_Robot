@@ -52,7 +52,7 @@ void Motor::backward(uint16_t pwm_signal = 100)
 
 void Motor::stop()
 {
-    analogWrite(speedPin, MAX_PWM);
+    analogWrite(speedPin, 0);
     digitalWrite(forwardPin, LOW);
     digitalWrite(backwardPin, LOW);
 }
@@ -107,6 +107,8 @@ TOF::TOF(uint16_t lox_address, uint16_t shutdown_pin, bool is_left = false)
     loxAddress = lox_address;
     shutdownPin = shutdown_pin;
     isLeft = is_left;
+    lastTime = 0;
+    distance = 0;
 }
 void TOF::init()
 {
@@ -122,10 +124,21 @@ void TOF::init()
 
 int TOF::getDistance()
 {
-    uint16_t measure = lox.readRange();
-    // ignore greater than 1m for left sensor and 2m for front
-    uint16_t MAX_D = isLeft ? 1000 : 2000;
-    return measure > MAX_D ? -1 : measure;
+    uint16_t measure = -1;
+
+    if (lox.isRangeComplete()) {
+        // ignore greater than 1m for left sensor and 2m for front
+        uint16_t MAX_D = isLeft ? 1000 : 2000;
+
+        measure = lox.readRangeResult();
+        distance = measure > MAX_D ? -1 : measure;
+        lastTime = micros();
+    } else if (micros() - lastTime > 500) {
+        // reset distance if no reading for more than 50 ms
+        distance = -1;
+    }
+
+    return distance;
 }
 
 void IMU::init()
