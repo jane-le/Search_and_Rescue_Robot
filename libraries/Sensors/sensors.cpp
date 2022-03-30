@@ -34,7 +34,7 @@ void Motor::init()
 #endif
 }
 
-void Motor::forward(uint16_t pwm_signal)
+void Motor::forward(uint16_t pwm_signal = 100)
 {
     uint16_t pwm = map(pwm_signal, 0, 100, 0, MAX_PWM);
     analogWrite(speedPin, pwm);
@@ -42,7 +42,7 @@ void Motor::forward(uint16_t pwm_signal)
     digitalWrite(backwardPin, LOW);
 }
 
-void Motor::backward(uint16_t pwm_signal)
+void Motor::backward(uint16_t pwm_signal = 100)
 {
     uint16_t pwm = map(pwm_signal, 0, 100, 0, MAX_PWM);
     analogWrite(speedPin, pwm);
@@ -102,7 +102,7 @@ unsigned long Encoder::getTicks()
     return encoderPosCount;
 }
 
-TOF::TOF(uint16_t lox_address, uint16_t shutdown_pin, bool is_left)
+TOF::TOF(uint16_t lox_address, uint16_t shutdown_pin, bool is_left = false)
 {
     loxAddress = lox_address;
     shutdownPin = shutdown_pin;
@@ -112,12 +112,11 @@ TOF::TOF(uint16_t lox_address, uint16_t shutdown_pin, bool is_left)
 }
 void TOF::init()
 {
-    Adafruit_VL53L0X::VL53L0X_Sense_config_t config = isLeft ? Adafruit_VL53L0X::VL53L0X_SENSE_DEFAULT:Adafruit_VL53L0X::VL53L0X_SENSE_LONG_RANGE;
+    Adafruit_VL53L0X::VL53L0X_Sense_config_t config = isLeft ? Adafruit_VL53L0X::VL53L0X_SENSE_HIGH_ACCURACY:Adafruit_VL53L0X::VL53L0X_SENSE_LONG_RANGE;
     if (!lox.begin(loxAddress, false, &Wire, config)) {
         Serial.println(F("Failed to boot VL53L0X"));
         while (1);
     }
-    lox.startRangeContinuous();
 #ifdef DEBUG_ON
     Serial.println(F("Found VL53L0X"));
 #endif
@@ -185,7 +184,7 @@ void IMU::init()
     // }
 }
 
-void IMU::calibrate(float* mag_hardiron, float* mag_softiron, float mag_field, int num_points)
+void IMU::calibrate(float* mag_hardiron, float* mag_softiron, float mag_field, int num_points = 100)
 {
 #ifdef CALIBRATE_IMU
     sensors_event_t mag_event, gyro_event, accel_event;
