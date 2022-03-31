@@ -108,6 +108,7 @@ class TOF {
     bool isLeft;
     uint32_t buffer[10];
     int distance;
+    int lastTime;
     uint16_t loxAddress;
 };
 
