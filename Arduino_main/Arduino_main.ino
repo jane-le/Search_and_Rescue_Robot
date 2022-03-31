@@ -62,7 +62,7 @@ ArduPID adjustController;
 double adjust_setpoint = 100;
 double adjust_input;
 double adjust_output;
-double adjust_p = 3;
+double adjust_p = 5;
 double adjust_i = 1;
 double adjust_d = 1.5;
 
@@ -82,9 +82,9 @@ const int LEFT_DIST_ADJUST_TOL = 20;
 
 const double CENTER_TILE_TOL = 10;
 
-const double PITCH_UPWARDS_VALUE = 15;
-const double PITCH_DOWNWARDS_VALUE = -15;
-const double PITCH_TOL_VALUE = 15;
+const double PITCH_UPWARDS_VALUE = -30;
+const double PITCH_DOWNWARDS_VALUE = 60;
+const double PITCH_TOL_VALUE = 50;
 const double ADJUST_VALUE = 25;
 
 const int RIGHT_ADJUST_DIST_TOL = 10;
@@ -158,9 +158,10 @@ void setState(robot_state_t new_state) {
 }
 
 void calculatePosition(robot_orientation current_orientation, std::pair<double, double>& position) {
-  if(abs(imu.getRoll()) > PITCH_TOL_VALUE || robot_state == PIT_FORWARD) {
+  
+  if(abs(imu.getGyroPitch()) > PITCH_TOL_VALUE || robot_state == PIT_FORWARD) {
     return;
-  }
+  } 
   int left_tof_value = left_tof.getDistance();
   int front_tof_value = front_tof.getDistance();
   
@@ -206,10 +207,9 @@ float getRateOfChange(int first, int last) {
 }
 void updateCurrentTile(const std::pair<double, double>& position, const int next_tile, int& current_tile) {
   
-  if(abs(imu.getRoll()) > PITCH_TOL_VALUE || robot_state == PIT_FORWARD) {
+  if(abs(imu.getGyroPitch()) > PITCH_TOL_VALUE || robot_state == PIT_FORWARD) {
     return;
-  }
-
+  } 
 /*
 
   // front tof too unreliable long range 
@@ -323,7 +323,7 @@ void handleInit() {
   }
 
   heading_offset = imu.getHeading(); 
- // pitch_offset = imu.getRoll(); 
+ // pitch_offset = imu.getGyroPitch(); 
   des_left_offset = getDesLeftDist();
   adjust_setpoint = des_left_offset;
   last_tof_time = micros();
@@ -334,11 +334,12 @@ void handleInit() {
 
 void handleTileForward() {
   Serial.println("HandleTileForward");
-  
-  if (imu.getRoll() < PITCH_DOWNWARDS_VALUE) {
+
+  /*
+  if (imu.getGyroPitch() > PITCH_DOWNWARDS_VALUE) {
     setState(PIT_FORWARD);
     return;
-  }
+  } */
 
   std::map<std::pair<int, int>, char>::iterator it = course.find(path[current_tile]);
   if (it != course.end()) {
@@ -367,15 +368,15 @@ void handlePitForward() {
   Serial.println("handlePitForward");
   Serial.println(" ");
   Serial.print("Pitch: ");
-  Serial.print(imu.getRoll());
+  Serial.print(imu.getGyroPitch());
   Serial.println(" ");
-  
+  delay(500);
   left_motor_power = PIT_MOTOR_HIGH;
   right_motor_power = PIT_MOTOR_HIGH;
   left_motor.backward(left_motor_power);
   right_motor.backward(right_motor_power);
   
-  if(imu.getRoll() > PITCH_UPWARDS_VALUE) {
+  if(imu.getGyroPitch() < PITCH_UPWARDS_VALUE) {
     
     left_motor_power = PIT_MOTOR_HIGH;
     right_motor_power = PIT_MOTOR_HIGH;
@@ -384,7 +385,8 @@ void handlePitForward() {
     right_motor.backward(right_motor_power);
       
     // exit pit state
-    while(abs(imu.getRoll()) > 15) {
+    /*
+    while(abs(imu.getGyroPitch()) > 15) {
       imu.updateIMU();   
       left_motor_power = PIT_MOTOR_HIGH;
       right_motor_power = PIT_MOTOR_HIGH;
@@ -394,7 +396,8 @@ void handlePitForward() {
 
       Serial.println("WE ARE STUCK");
     }
-      
+      */
+
     setState(TILE_FORWARD);
     
   } 
@@ -447,8 +450,9 @@ void handleTurnRight() {
 
   left_motor.stop();
   right_motor.stop();
+
   
-  while (abs(imu.getHeading() - target_heading) > 10) {
+  while (int(imu.getHeading() - target_heading + 180)%360 - 180 > 10) {
     imu.updateIMU();
     left_motor_power = TURN_MOTOR_VALUE;
     right_motor_power = TURN_MOTOR_VALUE;
@@ -600,8 +604,8 @@ void loop() {
 
   
   
-  
-  adjust_input = left_tof.getDistance();
+  int left_tof_value = left_tof.getDistance(); 
+  adjust_input = left_tof_value == -1 ? des_left_offset : left_tof_value;
   adjustController.compute();
   
   // calculate position and localize (match with map)
