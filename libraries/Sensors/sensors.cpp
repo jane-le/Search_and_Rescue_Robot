@@ -110,7 +110,7 @@ TOF::TOF(uint16_t lox_address, uint16_t shutdown_pin, bool is_left = false)
 }
 void TOF::init()
 {
-    Adafruit_VL53L0X::VL53L0X_Sense_config_t config = isLeft ? Adafruit_VL53L0X::VL53L0X_SENSE_HIGH_ACCURACY:Adafruit_VL53L0X::VL53L0X_SENSE_LONG_RANGE;
+    Adafruit_VL53L0X::VL53L0X_Sense_config_t config = isLeft ? Adafruit_VL53L0X::VL53L0X_SENSE_DEFAULT:Adafruit_VL53L0X::VL53L0X_SENSE_LONG_RANGE;
     if (!lox.begin(loxAddress, false, &Wire, config)) {
         Serial.println(F("Failed to boot VL53L0X"));
         while (1);
@@ -143,7 +143,8 @@ int TOF::getDistance()
 	    return distance;
 	} else {
 		measure = lox.readRange();
-	    return measure;
+		
+	    return measure > 1000 ? -1 : measure;
 	}
 }
 
@@ -271,6 +272,14 @@ void IMU::calibrate(float* mag_hardiron, float* mag_softiron, float mag_field, i
     }
     cal.printSavedCalibration()
 #endif
+}
+
+float IMU::getGyroPitch()
+{
+	sensors_event_t gyro_event;
+	gyroscope->getEvent(&gyro_event);
+	
+	return gyro_event.gyro.y * SENSORS_RADS_TO_DPS;
 }
 
 // vector math
