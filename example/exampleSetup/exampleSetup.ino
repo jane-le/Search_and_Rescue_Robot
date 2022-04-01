@@ -27,8 +27,8 @@ Motor rightMotor(R_MOTOR_PWM, R_MOTOR_PIN1, R_MOTOR_PIN2);
 
 
 // Initialize a TOF
-TOF leftTOF(LOX1_ADDRESS, SHT_LOX1);
-TOF frontTOF(LOX2_ADDRESS, SHT_LOX2);
+TOF leftTOF(LOX1_ADDRESS, SHT_LOX1, true);
+TOF frontTOF(LOX2_ADDRESS, SHT_LOX2, false);
 
 
 //ColorSensor colorSensor;
@@ -91,12 +91,7 @@ void setup() {
 }
 
 void loop() {
-  
-  Serial.println("Print distance"); 
-  Serial.println(" "); 
+  leftMotor.backward(80); 
+  rightMotor.backward(80);
 
-  Serial.print(leftTOF.getDistance()); 
-  Serial.println(" "); 
-  Serial.print(frontTOF.getDistance()); 
-  Serial.println(" "); 
 }

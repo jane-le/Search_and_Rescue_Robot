@@ -70,7 +70,7 @@ const int PIT_MOTOR_LOW = 40;
 const int PIT_MOTOR_MED = 50;
 const int PIT_MOTOR_HIGH = 95;
 const int PIT_INCREMENT = 2; 
-const int TILE_MOTOR_VALUE = 60;
+const int TILE_MOTOR_VALUE = 70;
 const int TURN_MOTOR_VALUE = 50;
 const int SLOW_MOTOR_VALUE = 40;
 const int TILE_ADJUST_VALUE = 60;
@@ -133,10 +133,10 @@ std::vector<std::pair<int,int>> turn_order = {
 // F = front tof, B = back tof, x and y in mm, based on 1.8 m
 std::vector<std::vector<std::pair<int, int>>> coords = {
   {{150, 150}, {450, 150}, {750, 150}, {1050, 150}, {1350, 150}, {1650, 150}},
-  {{150, 450}, {450, 450}, {750, 450}, {1050, 450}, {1350, 450}, {1650, 450}},
-  {{150, 750}, {450, 750}, {750, 750}, {1050, 750}, {1350, 750}, {1650, 750}},
-  {{150, 1050}, {450, 1050}, {750, 1050}, {1050, 1050}, {1350, 1050}, {1650, 1050}},
-  {{150, 1350}, {450, 1350}, {750, 1350}, {1050, 1350}, {1350, 1350}, {1650, 1350}},
+  {{150, 450}, {450, 480}, {750, 450}, {1050, 450}, {1320, 450}, {1650, 450}},
+  {{150, 750}, {450, 750}, {730, 750}, {1050, 730}, {1350, 750}, {1650, 750}},
+  {{150, 1050}, {450, 1050}, {760, 1080}, {1050, 1050}, {1360, 1000}, {1650, 1050}},
+  {{150, 1350}, {480, 1360}, {750, 1350}, {1050, 1350}, {1350, 1350}, {1680, 1320}},
   {{150, 1650}, {450, 1650}, {750, 1650}, {1050, 1650}, {1350, 1650}, {1650, 1650}}
 };
 
@@ -157,11 +157,6 @@ void setState(robot_state_t new_state) {
 }
 
 void calculatePosition(robot_orientation current_orientation, std::pair<double, double>& position) {
-  
-  if(abs(imu.getGyroPitch()) > PITCH_TOL_VALUE || robot_state == PIT_FORWARD) {
-    delay(50);
-    return;
-  } 
   int left_tof_value = left_tof.getDistance();
   int front_tof_value = front_tof.getDistance();
   
@@ -203,11 +198,6 @@ float getRateOfChange(int first, int last) {
   return (last - first) / dt;  
 }
 void updateCurrentTile(const std::pair<double, double>& position, const int next_tile, int& current_tile) {
-  
-  if(abs(imu.getGyroPitch()) > PITCH_TOL_VALUE || robot_state == PIT_FORWARD) {
-    delay(50);
-    return;
-  } 
 /*
   if(left_tof.getDistance() == -1 || front_tof.getDistance() == -1) {
     return;
@@ -320,7 +310,8 @@ void handleInit() {
   des_left_offset = getDesLeftDist();
   adjust_setpoint = des_left_offset;
   last_tof_time = micros();
-  prev_tof_value = left_tof.getDistance();
+  
+  prev_tof_value = front_tof.getDistance();
   
   setState(TILE_FORWARD);
 }
@@ -341,10 +332,14 @@ void handleTileForward() {
     if (landmark == 'T' && curr_turn < 11) {
       std::map<std::pair<int, int>, robot_orientation>::iterator it_turn = turn_orientation.find(path[current_tile]);
       if(it_turn != turn_orientation.end() && it_turn->second == current_orientation && path[current_tile] == turn_order[curr_turn]) {
+          if(abs(imu.getGyroPitch()) > PITCH_TOL_VALUE || robot_state == PIT_FORWARD || abs(imu.getRoll()) > PITCH_TOL_VALUE) {
+            delay(500);
+            return;
+          } 
           setState(TURN_RIGHT);
           return;
       }
-    } else if (landmark == 'E') {
+    } else if (landmark == 'E' && curr_turn > 10) {
       setState(STOP);
       return;
     }
@@ -399,7 +394,7 @@ void handleTurnRight() {
   Serial.println("handleTurnRight"); 
   adjustController.stop();
   // is our front_tof value in the middle of the tile ? if not return; 
-  /*
+  
   std::pair<int, int> coord = coords[path[current_tile].first][path[current_tile].second];
   std::map<std::pair<int, int>, char>::iterator it = course.find(path[current_tile]);
   if (it != course.end()) {
@@ -409,8 +404,7 @@ void handleTurnRight() {
       setState(TILE_FORWARD);
       return;
     }
-  } */
-  std::pair<int, int> coord = coords[path[current_tile].first][path[current_tile].second];
+  } 
 
   double front_dist_tolerance = 400;
     switch (current_orientation) {
