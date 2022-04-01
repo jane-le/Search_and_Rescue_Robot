@@ -135,9 +135,6 @@ int TOF::getDistance()
 	        measure = lox.readRangeResult();
 	        distance = measure > MAX_D ? -1 : measure;
 	        lastTime = micros();
-	    } else if (micros() - lastTime > 500) {
-	        // reset distance if no reading for more than 50 ms
-	        distance = -1;
 	    }
 	
 	    return distance;
@@ -279,7 +276,7 @@ float IMU::getGyroPitch()
 	sensors_event_t gyro_event;
 	gyroscope->getEvent(&gyro_event);
 	
-	return gyro_event.gyro.y * SENSORS_RADS_TO_DPS;
+	return gyro_event.gyro.x * SENSORS_RADS_TO_DPS;
 }
 
 // vector math
