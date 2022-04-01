@@ -62,9 +62,9 @@ ArduPID adjustController;
 double adjust_setpoint = 100;
 double adjust_input;
 double adjust_output;
-double adjust_p = 5;
-double adjust_i = 1;
-double adjust_d = 1.5;
+double adjust_p = 605; // 25
+double adjust_i = 0; //3
+double adjust_d = 50000; //5
 
 const int PIT_MOTOR_LOW = 40;
 const int PIT_MOTOR_MED = 50;
@@ -149,7 +149,6 @@ std::vector<std::pair<int, int>> path = {
   {3, 3}, {3, 2}, {2, 2}, {2, 3}
 };
 
-
 /* ------------ Functions --------------- */
 
 void setState(robot_state_t new_state) {
@@ -160,6 +159,7 @@ void setState(robot_state_t new_state) {
 void calculatePosition(robot_orientation current_orientation, std::pair<double, double>& position) {
   
   if(abs(imu.getGyroPitch()) > PITCH_TOL_VALUE || robot_state == PIT_FORWARD) {
+    delay(50);
     return;
   } 
   int left_tof_value = left_tof.getDistance();
@@ -171,7 +171,6 @@ void calculatePosition(robot_orientation current_orientation, std::pair<double, 
   Serial.print("   "); 
   Serial.print(front_tof_value); 
   Serial.println(" "); 
-
 
   if (left_tof_value == -1 || front_tof_value == -1) {
     return;   
@@ -197,9 +196,7 @@ void calculatePosition(robot_orientation current_orientation, std::pair<double, 
   }  
 }
 
-
 float getRateOfChange(int first, int last) {
-
   float dt = (micros() - last_tof_time) * 1e-6;
   last_tof_time = micros();
 
@@ -208,14 +205,10 @@ float getRateOfChange(int first, int last) {
 void updateCurrentTile(const std::pair<double, double>& position, const int next_tile, int& current_tile) {
   
   if(abs(imu.getGyroPitch()) > PITCH_TOL_VALUE || robot_state == PIT_FORWARD) {
+    delay(50);
     return;
   } 
 /*
-
-  // front tof too unreliable long range 
-  if((shouldAdjustRight() || shouldAdjustLeft()) && front_tof.getDistance() > 1000) {
-    return;  
-  }
   if(left_tof.getDistance() == -1 || front_tof.getDistance() == -1) {
     return;
   } */
@@ -399,29 +392,15 @@ void handlePitForward() {
       */
 
     setState(TILE_FORWARD);
-    
   } 
 }
 
 void handleTurnRight() {
-//  Serial.println("handleTurnRight");
+  Serial.println("handleTurnRight"); 
   adjustController.stop();
-  
-  // slow down 
-  left_motor_power = SLOW_MOTOR_VALUE;
-  right_motor_power = SLOW_MOTOR_VALUE;
-  left_motor.backward(left_motor_power);
-  right_motor.backward(right_motor_power); 
-
   // is our front_tof value in the middle of the tile ? if not return; 
+  /*
   std::pair<int, int> coord = coords[path[current_tile].first][path[current_tile].second];
-  
-  /*double front_dist_tolerance = 120; 
-  int front_tof_value = front_tof.getDistance();
-
-  if(front_tof_value == -1) {
-    return;
-  }  */
   std::map<std::pair<int, int>, char>::iterator it = course.find(path[current_tile]);
   if (it != course.end()) {
     char landmark = it->second;
@@ -430,11 +409,13 @@ void handleTurnRight() {
       setState(TILE_FORWARD);
       return;
     }
-  }
-  double front_dist_tolerance = 150;
+  } */
+  std::pair<int, int> coord = coords[path[current_tile].first][path[current_tile].second];
+
+  double front_dist_tolerance = 400;
     switch (current_orientation) {
     case LEFT:
-      if(robot_position.second > coord.second + front_dist_tolerance) return; 
+      if(robot_position.second > coord.second + front_dist_tolerance) return;   
     case RIGHT:
       if(robot_position.second < coord.second - front_dist_tolerance) return;
     case TOP:
@@ -444,21 +425,21 @@ void handleTurnRight() {
   } 
   
   // turn !! 
+  Serial.println("WE ARE GOING TO STOP");
+  left_motor.stop();
+  right_motor.stop(); 
   
   double curr_heading = imu.getHeading();
   double target_heading = curr_heading - 90 < 0 ? curr_heading - 90 + 360 : curr_heading - 90; 
 
-  left_motor.stop();
-  right_motor.stop();
-
-  
-  while (int(imu.getHeading() - target_heading + 180)%360 - 180 > 10) {
+  Serial.println("WE ARE GOING TO TURN");
+  while(abs(imu.getHeading() - target_heading) > 10) {
     imu.updateIMU();
     left_motor_power = TURN_MOTOR_VALUE;
     right_motor_power = TURN_MOTOR_VALUE;
     left_motor.backward(left_motor_power);
     right_motor.forward(right_motor_power);
-//    Serial.println(abs(imu.getHeading() - target_heading));
+    Serial.println(abs(imu.getHeading() - target_heading));
   }
 
   left_motor.stop();
@@ -493,8 +474,6 @@ void handleTurnRight() {
 
 void handleStop() {
   Serial.println("handleStop");
-
-
   // slow down 
  
   left_motor_power = SLOW_MOTOR_VALUE;
@@ -599,10 +578,6 @@ void loop() {
   Serial.print("pitch: "); 
   Serial.print(imu.getGyroPitch()); 
   Serial.println(" ");
-
-  
-
-  
   
   int left_tof_value = left_tof.getDistance(); 
   adjust_input = left_tof_value == -1 ? des_left_offset : left_tof_value;
